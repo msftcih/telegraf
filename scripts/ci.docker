@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye
+=======
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.23.5-bullseye
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 
 RUN chmod -R 755 "$GOPATH"
 
