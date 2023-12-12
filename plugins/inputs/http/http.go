@@ -31,7 +31,9 @@ type HTTP struct {
 	Body            string   `toml:"body"`
 	ContentEncoding string   `toml:"content_encoding"`
 
-	// Basic authentication
+	Headers map[string]string `toml:"headers"`
+
+	// HTTP Basic Auth Credentials
 	Username config.Secret `toml:"username"`
 	Password config.Secret `toml:"password"`
 
@@ -74,6 +76,7 @@ func (h *HTTP) Init() error {
 	if err != nil {
 		return err
 	}
+
 	h.client = client
 
 	// Set default as [200]
@@ -123,7 +126,10 @@ func (h *HTTP) Stop() {
 // Returns:
 //
 //	error: Any error that may have occurred
-func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
+func (h *HTTP) gatherURL(
+	acc telegraf.Accumulator,
+	url string,
+) error {
 	body := makeRequestBodyReader(h.ContentEncoding, h.Body)
 	request, err := http.NewRequest(h.Method, url, body)
 	if err != nil {
@@ -160,6 +166,11 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 
 	if h.ContentEncoding == "gzip" {
 		request.Header.Set("Content-Encoding", "gzip")
+	}
+	
+	subscriptionKey := os.Getenv("subscriptionkey")
+	if len(subscriptionKey) > 0 {
+		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
 
 	subscriptionKey := os.Getenv("subscriptionkey")
@@ -248,15 +259,15 @@ func (h *HTTP) setRequestAuth(request *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("getting username failed: %w", err)
 	}
-	defer username.Destroy()
+	defer config.ReleaseSecret(username)
 
 	password, err := h.Password.Get()
 	if err != nil {
 		return fmt.Errorf("getting password failed: %w", err)
 	}
-	defer password.Destroy()
+	defer config.ReleaseSecret(password)
 
-	request.SetBasicAuth(username.String(), password.String())
+	request.SetBasicAuth(string(username), string(password))
 
 	return nil
 }
