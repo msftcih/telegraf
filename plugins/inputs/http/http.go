@@ -31,13 +31,12 @@ type HTTP struct {
 	Body            string   `toml:"body"`
 	ContentEncoding string   `toml:"content_encoding"`
 
-	Headers map[string]string `toml:"headers"`
-
-	// HTTP Basic Auth Credentials
+	// Basic authentication
 	Username config.Secret `toml:"username"`
 	Password config.Secret `toml:"password"`
 
 	// Bearer authentication
+<<<<<<< HEAD
 	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
 	Token       config.Secret `toml:"token"`
 	TokenFile   string        `toml:"token_file"`
@@ -47,6 +46,17 @@ type HTTP struct {
 	Log                telegraf.Logger           `toml:"-"`
 
 	common_http.HTTPClientConfig
+=======
+	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;use 'token_file' instead"`
+	Token       config.Secret `toml:"token"`
+	TokenFile   string        `toml:"token_file"`
+
+	Headers            map[string]string `toml:"headers"`
+	SuccessStatusCodes []int             `toml:"success_status_codes"`
+	Log                telegraf.Logger   `toml:"-"`
+
+	httpconfig.HTTPClientConfig
+>>>>>>> e8b06347e (updates to http.go)
 
 	client     *http.Client
 	parserFunc telegraf.ParserFunc
@@ -75,7 +85,6 @@ func (h *HTTP) Init() error {
 	if err != nil {
 		return err
 	}
-
 	h.client = client
 
 	// Set default as [200]
@@ -125,18 +134,23 @@ func (h *HTTP) Stop() {
 // Returns:
 //
 //	error: Any error that may have occurred
-func (h *HTTP) gatherURL(
-	acc telegraf.Accumulator,
-	url string,
-) error {
+func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 	body := makeRequestBodyReader(h.ContentEncoding, h.Body)
 	request, err := http.NewRequest(h.Method, url, body)
 	if err != nil {
 		return err
 	}
 
-	if h.BearerToken != "" {
-		token, err := os.ReadFile(h.BearerToken)
+	if !h.Token.Empty() {
+		token, err := h.Token.Get()
+		if err != nil {
+			return err
+		}
+		bearer := "Bearer " + strings.TrimSpace(token.String())
+		token.Destroy()
+		request.Header.Set("Authorization", bearer)
+	} else if h.TokenFile != "" {
+		token, err := os.ReadFile(h.TokenFile)
 		if err != nil {
 			return err
 		}
@@ -147,7 +161,7 @@ func (h *HTTP) gatherURL(
 	if h.ContentEncoding == "gzip" {
 		request.Header.Set("Content-Encoding", "gzip")
 	}
-	
+
 	subscriptionKey := os.Getenv("subscriptionkey")
 	if len(subscriptionKey) > 0 {
 		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
@@ -234,15 +248,15 @@ func (h *HTTP) setRequestAuth(request *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("getting username failed: %w", err)
 	}
-	defer config.ReleaseSecret(username)
+	defer username.Destroy()
 
 	password, err := h.Password.Get()
 	if err != nil {
 		return fmt.Errorf("getting password failed: %w", err)
 	}
-	defer config.ReleaseSecret(password)
+	defer password.Destroy()
 
-	request.SetBasicAuth(string(username), string(password))
+	request.SetBasicAuth(username.String(), password.String())
 
 	return nil
 }
