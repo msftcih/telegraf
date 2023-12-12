@@ -1,13 +1,22 @@
+<<<<<<< HEAD
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye AS builder
+=======
+FROM golang:1.21.5-bullseye as builder
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
 RUN make go-install
 RUN go build cmd/oauth/get_token.go
+<<<<<<< HEAD
 RUN go build cmd/oauth/get_classic_token_username_password.go
 RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
 RUN go build cmd/oauth/get_oauth2_token_password_credentials.go
+=======
+RUN go build cmd/oauth/get_token_username_password.go
+RUN go build cmd/oauth/get_token_basic_auth_username_password.go
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 
 FROM buildpack-deps:bullseye-curl
 COPY --from=builder /go/bin/* /usr/bin/
@@ -16,6 +25,7 @@ COPY etc/telegraf.conf /etc/telegraf/telegraf.conf
 RUN mkdir -p /tmp/telegraf
 COPY --from=builder /go/bin/* /usr/bin/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token /tmp/telegraf/
+<<<<<<< HEAD
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
@@ -26,10 +36,21 @@ RUN chmod +x /tmp/telegraf/get_classic_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
 RUN chmod +x /tmp/telegraf/get_oauth2_token_password_credentials
+=======
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
+
+RUN chmod +x /tmp/telegraf/get_token
+RUN chmod +x /tmp/telegraf/get_token_username_password
+RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 
 EXPOSE 8125/udp 8092/udp 8094
 
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
+<<<<<<< HEAD
 RUN chmod +x entrypoint.sh
+=======
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["telegraf"]

@@ -1,10 +1,17 @@
+<<<<<<< HEAD
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.20.5-1-buster AS builder
+=======
+FROM golang:1.20.5-buster as builder
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
 RUN make go-install
 RUN go build cmd/oauth/get_token.go
+<<<<<<< HEAD
 RUN go build cmd/oauth/get_classic_token_username_password.go
+=======
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
 
@@ -15,12 +22,18 @@ COPY etc/telegraf.conf /etc/telegraf/telegraf.conf
 RUN mkdir -p /tmp/telegraf
 COPY --from=builder /go/bin/* /usr/bin/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token /tmp/telegraf/
+<<<<<<< HEAD
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
+=======
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
 
 RUN chmod +x /tmp/telegraf/get_token
+<<<<<<< HEAD
 RUN chmod +x /tmp/telegraf/get_classic_token_username_password
+=======
+>>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 RUN chmod +x /tmp/telegraf/get_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
 
