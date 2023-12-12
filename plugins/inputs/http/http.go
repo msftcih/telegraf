@@ -31,7 +31,9 @@ type HTTP struct {
 	Body            string   `toml:"body"`
 	ContentEncoding string   `toml:"content_encoding"`
 
-	// Basic authentication
+	Headers map[string]string `toml:"headers"`
+
+	// HTTP Basic Auth Credentials
 	Username config.Secret `toml:"username"`
 	Password config.Secret `toml:"password"`
 
@@ -73,6 +75,7 @@ func (h *HTTP) Init() error {
 	if err != nil {
 		return err
 	}
+
 	h.client = client
 
 	// Set default as [200]
@@ -122,23 +125,18 @@ func (h *HTTP) Stop() {
 // Returns:
 //
 //	error: Any error that may have occurred
-func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
+func (h *HTTP) gatherURL(
+	acc telegraf.Accumulator,
+	url string,
+) error {
 	body := makeRequestBodyReader(h.ContentEncoding, h.Body)
 	request, err := http.NewRequest(h.Method, url, body)
 	if err != nil {
 		return err
 	}
 
-	if !h.Token.Empty() {
-		token, err := h.Token.Get()
-		if err != nil {
-			return err
-		}
-		bearer := "Bearer " + strings.TrimSpace(token.String())
-		token.Destroy()
-		request.Header.Set("Authorization", bearer)
-	} else if h.TokenFile != "" {
-		token, err := os.ReadFile(h.TokenFile)
+	if h.BearerToken != "" {
+		token, err := os.ReadFile(h.BearerToken)
 		if err != nil {
 			return err
 		}
@@ -148,6 +146,11 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 
 	if h.ContentEncoding == "gzip" {
 		request.Header.Set("Content-Encoding", "gzip")
+	}
+	
+	subscriptionKey := os.Getenv("subscriptionkey")
+	if len(subscriptionKey) > 0 {
+		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
 
 	for k, v := range h.Headers {
@@ -231,15 +234,15 @@ func (h *HTTP) setRequestAuth(request *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("getting username failed: %w", err)
 	}
-	defer username.Destroy()
+	defer config.ReleaseSecret(username)
 
 	password, err := h.Password.Get()
 	if err != nil {
 		return fmt.Errorf("getting password failed: %w", err)
 	}
-	defer password.Destroy()
+	defer config.ReleaseSecret(password)
 
-	request.SetBasicAuth(username.String(), password.String())
+	request.SetBasicAuth(string(username), string(password))
 
 	return nil
 }
