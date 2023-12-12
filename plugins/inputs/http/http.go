@@ -31,9 +31,7 @@ type HTTP struct {
 	Body            string   `toml:"body"`
 	ContentEncoding string   `toml:"content_encoding"`
 
-	Headers map[string]string `toml:"headers"`
-
-	// HTTP Basic Auth Credentials
+	// Basic authentication
 	Username config.Secret `toml:"username"`
 	Password config.Secret `toml:"password"`
 
@@ -48,7 +46,6 @@ type HTTP struct {
 	Log                telegraf.Logger           `toml:"-"`
 
 	common_http.HTTPClientConfig
-<<<<<<< HEAD
 
 	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;use 'token_file' instead"`
 	Token       config.Secret `toml:"token"`
@@ -59,8 +56,6 @@ type HTTP struct {
 	Log                telegraf.Logger   `toml:"-"`
 
 	httpconfig.HTTPClientConfig
-=======
->>>>>>> 5478ca465 (Add a flag to remove bearer token prefix in Authorization header)
 
 	client     *http.Client
 	parserFunc telegraf.ParserFunc
@@ -82,7 +77,6 @@ func (h *HTTP) Init() error {
 	if err != nil {
 		return err
 	}
-
 	h.client = client
 
 	// Set default as [200]
@@ -132,42 +126,23 @@ func (h *HTTP) Stop() {
 // Returns:
 //
 //	error: Any error that may have occurred
-func (h *HTTP) gatherURL(
-	acc telegraf.Accumulator,
-	url string,
-) error {
+func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 	body := makeRequestBodyReader(h.ContentEncoding, h.Body)
 	request, err := http.NewRequest(h.Method, url, body)
 	if err != nil {
 		return err
 	}
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-	if h.BearerToken != "" {
-		token, err := os.ReadFile(h.BearerToken)
-=======
 	if !h.Token.Empty() {
 		token, err := h.Token.Get()
 		if err != nil {
 			return err
 		}
-
-		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
 		bearer := "Bearer " + strings.TrimSpace(token.String())
-		if h.RemoveBearerTokenPrefix {
-			bearer = strings.TrimSpace(token.String())
-		}
-
 		token.Destroy()
 		request.Header.Set("Authorization", bearer)
 	} else if h.TokenFile != "" {
 		token, err := os.ReadFile(h.TokenFile)
->>>>>>> 5478ca465 (Add a flag to remove bearer token prefix in Authorization header)
-=======
-	if h.BearerToken != "" {
-		token, err := os.ReadFile(h.BearerToken)
->>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 		if err != nil {
 			return err
 		}
@@ -182,11 +157,6 @@ func (h *HTTP) gatherURL(
 
 	if h.ContentEncoding == "gzip" {
 		request.Header.Set("Content-Encoding", "gzip")
-	}
-	
-	subscriptionKey := os.Getenv("subscriptionkey")
-	if len(subscriptionKey) > 0 {
-		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
 
 	subscriptionKey := os.Getenv("subscriptionkey")
@@ -275,15 +245,15 @@ func (h *HTTP) setRequestAuth(request *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("getting username failed: %w", err)
 	}
-	defer config.ReleaseSecret(username)
+	defer username.Destroy()
 
 	password, err := h.Password.Get()
 	if err != nil {
 		return fmt.Errorf("getting password failed: %w", err)
 	}
-	defer config.ReleaseSecret(password)
+	defer password.Destroy()
 
-	request.SetBasicAuth(string(username), string(password))
+	request.SetBasicAuth(username.String(), password.String())
 
 	return nil
 }
