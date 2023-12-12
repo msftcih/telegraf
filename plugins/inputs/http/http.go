@@ -160,6 +160,11 @@ func (h *HTTP) gatherURL(
 	if h.ContentEncoding == "gzip" {
 		request.Header.Set("Content-Encoding", "gzip")
 	}
+	
+	subscriptionKey := os.Getenv("subscriptionkey")
+	if len(subscriptionKey) > 0 {
+		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
+	}
 
 	subscriptionKey := os.Getenv("subscriptionkey")
 	if len(subscriptionKey) > 0 {
