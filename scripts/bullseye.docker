@@ -9,6 +9,9 @@ COPY . /go/src/github.com/influxdata/telegraf
 RUN make go-install
 RUN go build cmd/oauth/get_token.go
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 42b7b631d (Updates to Telegraf)
 RUN go build cmd/oauth/get_classic_token_username_password.go
 RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
@@ -26,6 +29,7 @@ RUN mkdir -p /tmp/telegraf
 COPY --from=builder /go/bin/* /usr/bin/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token /tmp/telegraf/
 <<<<<<< HEAD
+<<<<<<< HEAD
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
@@ -37,10 +41,14 @@ RUN chmod +x /tmp/telegraf/get_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
 RUN chmod +x /tmp/telegraf/get_oauth2_token_password_credentials
 =======
+=======
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
+>>>>>>> 42b7b631d (Updates to Telegraf)
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
 
 RUN chmod +x /tmp/telegraf/get_token
+RUN chmod +x /tmp/telegraf/get_classic_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
 >>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
