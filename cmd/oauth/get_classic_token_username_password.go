@@ -23,7 +23,6 @@ func main() {
 	output_file := "/tmp/telegraf/access_token"
 	error_file := "/tmp/telegraf/errors"
 	e, err := os.Create(error_file)
-
 	if len(client_id) == 0 {
 		log.Printf("invalid client_id, %d\n", len(client_id))
 		return
@@ -77,6 +76,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	f.WriteString(authToken.AccessToken)
 }
