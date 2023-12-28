@@ -36,17 +36,6 @@ type HTTP struct {
 	Password config.Secret `toml:"password"`
 
 	// Bearer authentication
-<<<<<<< HEAD
-	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
-	Token       config.Secret `toml:"token"`
-	TokenFile   string        `toml:"token_file"`
-
-	Headers            map[string]*config.Secret `toml:"headers"`
-	SuccessStatusCodes []int                     `toml:"success_status_codes"`
-	Log                telegraf.Logger           `toml:"-"`
-
-	common_http.HTTPClientConfig
-=======
 	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;use 'token_file' instead"`
 	Token       config.Secret `toml:"token"`
 	TokenFile   string        `toml:"token_file"`
@@ -56,7 +45,6 @@ type HTTP struct {
 	Log                telegraf.Logger   `toml:"-"`
 
 	httpconfig.HTTPClientConfig
->>>>>>> e8b06347e (updates to http.go)
 
 	client     *http.Client
 	parserFunc telegraf.ParserFunc
