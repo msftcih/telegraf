@@ -546,3 +546,6 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+// replace due to https://github.com/Azure/azure-event-hubs-go/issues/241
+replace github.com/Azure/azure-event-hubs-go/v3 => github.com/MSIT-BPSC-IOT/azure-event-hubs-go/v3 v3.6.1
