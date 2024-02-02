@@ -40,7 +40,7 @@ func main(){
 	}
 
 	var payload = strings.NewReader(`{
-		"userId":"` + client_id + `",
+		"username":"` + client_id + `",
 		"password":"` + client_secret + `"
 		}`)
 	
