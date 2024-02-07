@@ -140,6 +140,11 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		request.Header.Set("Content-Encoding", "gzip")
 	}
 
+	subscriptionKey := os.Getenv("subscriptionkey")
+	if len(subscriptionKey) > 0 {
+		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
+	}
+
 	for k, v := range h.Headers {
 		if strings.EqualFold(k, "host") {
 			request.Host = v

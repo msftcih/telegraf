@@ -1,0 +1,31 @@
+FROM golang:1.20.5-buster as builder
+WORKDIR /go/src/github.com/influxdata/telegraf
+
+COPY . /go/src/github.com/influxdata/telegraf
+RUN make go-install
+RUN go build cmd/oauth/get_token.go
+RUN go build cmd/oauth/get_classic_token_username_password.go
+RUN go build cmd/oauth/get_token_username_password.go
+RUN go build cmd/oauth/get_token_basic_auth_username_password.go
+
+FROM buildpack-deps:buster-curl
+COPY --from=builder /go/bin/* /usr/bin/
+COPY etc/telegraf.conf /etc/telegraf/telegraf.conf
+
+RUN mkdir -p /tmp/telegraf
+COPY --from=builder /go/bin/* /usr/bin/
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token /tmp/telegraf/
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
+
+RUN chmod +x /tmp/telegraf/get_token
+RUN chmod +x /tmp/telegraf/get_classic_token_username_password
+RUN chmod +x /tmp/telegraf/get_token_username_password
+RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
+
+EXPOSE 8125/udp 8092/udp 8094
+
+COPY scripts/docker-entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["telegraf"]
