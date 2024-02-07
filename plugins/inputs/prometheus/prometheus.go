@@ -27,7 +27,7 @@ import (
 	"github.com/influxdata/telegraf/internal"
 	httpconfig "github.com/influxdata/telegraf/plugins/common/http"
 	"github.com/influxdata/telegraf/plugins/inputs"
-	parserV2 "github.com/influxdata/telegraf/plugins/parsers/prometheus"
+	parser "github.com/influxdata/telegraf/plugins/parsers/prometheus"
 )
 
 //go:embed sample.conf
@@ -75,7 +75,8 @@ type Prometheus struct {
 
 	HTTPHeaders map[string]string `toml:"http_headers"`
 
-	ResponseTimeout config.Duration `toml:"response_timeout" deprecated:"1.26.0;use 'timeout' instead"`
+	ResponseTimeout    config.Duration `toml:"response_timeout" deprecated:"1.26.0;use 'timeout' instead"`
+	ContentLengthLimit config.Size     `toml:"content_length_limit"`
 
 	MetricVersion int `toml:"metric_version"`
 
@@ -205,6 +206,10 @@ func (p *Prometheus) Init() error {
 
 	if err := p.initFilters(); err != nil {
 		return err
+	}
+
+	if p.MetricVersion == 0 {
+		p.MetricVersion = 1
 	}
 
 	ctx := context.Background()
@@ -357,14 +362,14 @@ func (p *Prometheus) Gather(acc telegraf.Accumulator) error {
 
 func (p *Prometheus) gatherURL(u URLAndAddress, acc telegraf.Accumulator) error {
 	var req *http.Request
-	var err error
 	var uClient *http.Client
-	var metrics []telegraf.Metric
 	if u.URL.Scheme == "unix" {
 		path := u.URL.Query().Get("path")
 		if path == "" {
 			path = "/metrics"
 		}
+
+		var err error
 		addr := "http://localhost" + path
 		req, err = http.NewRequest("GET", addr, nil)
 		if err != nil {
@@ -390,6 +395,7 @@ func (p *Prometheus) gatherURL(u URLAndAddress, acc telegraf.Accumulator) error 
 		if u.URL.Path == "" {
 			u.URL.Path = "/metrics"
 		}
+		var err error
 		req, err = http.NewRequest("GET", u.URL.String(), nil)
 		if err != nil {
 			return fmt.Errorf("unable to create new request %q: %w", u.URL.String(), err)
@@ -414,6 +420,7 @@ func (p *Prometheus) gatherURL(u URLAndAddress, acc telegraf.Accumulator) error 
 		req.Header.Set(key, value)
 	}
 
+	var err error
 	var resp *http.Response
 	if u.URL.Scheme != "unix" {
 		//nolint:bodyclose // False positive (because of if-else) - body will be closed in `defer`
@@ -431,21 +438,37 @@ func (p *Prometheus) gatherURL(u URLAndAddress, acc telegraf.Accumulator) error 
 		return fmt.Errorf("%q returned HTTP status %q", u.URL, resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading body: %w", err)
-	}
+	var body []byte
+	if p.ContentLengthLimit != 0 {
+		limit := int64(p.ContentLengthLimit)
 
-	if p.MetricVersion == 2 {
-		parser := parserV2.Parser{
-			Header:          resp.Header,
-			IgnoreTimestamp: p.IgnoreTimestamp,
+		// To determine whether io.ReadAll() ended due to EOF or reached the specified limit,
+		// read up to the specified limit plus one extra byte, and then make a decision based
+		// on the length of the result.
+		lr := io.LimitReader(resp.Body, limit+1)
+
+		body, err = io.ReadAll(lr)
+		if err != nil {
+			return fmt.Errorf("error reading body: %w", err)
 		}
-		metrics, err = parser.Parse(body)
+		if int64(len(body)) > limit {
+			p.Log.Infof("skipping %s: content length exceeded maximum body size (%d)", u.URL, limit)
+			return nil
+		}
 	} else {
-		metrics, err = Parse(body, resp.Header, p.IgnoreTimestamp)
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("error reading body: %w", err)
+		}
 	}
 
+	// Parse the metrics
+	metricParser := parser.Parser{
+		Header:          resp.Header,
+		MetricVersion:   p.MetricVersion,
+		IgnoreTimestamp: p.IgnoreTimestamp,
+	}
+	metrics, err := metricParser.Parse(body)
 	if err != nil {
 		return fmt.Errorf("error reading metrics for %q: %w", u.URL, err)
 	}
