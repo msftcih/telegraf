@@ -1,5 +1,6 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye AS builder
 =======
 FROM golang:1.21.5-bullseye as builder
@@ -7,6 +8,9 @@ FROM golang:1.21.5-bullseye as builder
 =======
 FROM golang:1.21.6-bullseye as builder
 >>>>>>> c0d417db0 (Package Upgrades from Telegraf source)
+=======
+FROM golang:1.22.0-bullseye as builder
+>>>>>>> aeacfa72d (Updated golang versions)
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
