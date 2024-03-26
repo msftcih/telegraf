@@ -1,4 +1,5 @@
 package main
+<<<<<<< HEAD
 //script to issue oauth2 token requests from telegraf
 //Usage: get_oauth2_token_password_credentials.go -u <oauth_url> -i <oauth_issue_type-new/refresh> -o <access_token_file> -r <refresh_token_file> -ca <ca_cert_file>
 //refresh_token_file is optional and only required for refresh token requests
@@ -7,6 +8,11 @@ import (
     "crypto/x509"
     "encoding/json"
 	"flag"
+=======
+
+import (
+	"encoding/json"
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -27,14 +33,19 @@ type AuthToken struct {
 
 func main() {
 	method := "POST"
+<<<<<<< HEAD
 	oauth_url := flag.String("u", "", "OAuth URL")
 	oauth_issue_type := flag.String("i", "new", "OAuth Issue Type")
+=======
+	oauth_url := os.Getenv("oauth_url")
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	client_id := os.Getenv("client_id")
 	client_secret := os.Getenv("client_secret")
 	username := os.Getenv("username")
 	password := os.Getenv("password")
 	oauth_grant_type := os.Getenv("oauth_grant_type")
 	oauth_content_type := os.Getenv("oauth_content_type")
+<<<<<<< HEAD
 	output_file := flag.String("o", "/tmp/telegraf/access_token", "Access Token File")
 	refresh_token_file := flag.String("r", "/tmp/telegraf/refresh_token", "Refresh Token File")
 	caCertFile := flag.String("ca", "", "CA Cert File")
@@ -45,6 +56,10 @@ func main() {
         log.Fatal("OAuth URL is required")
     }
 
+=======
+	output_file := "/tmp/telegraf/access_token"	
+	
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	if len(client_id) == 0 {
 		log.Printf("invalid client_id with length , %d\n", len(client_id))
 		return
@@ -65,6 +80,7 @@ func main() {
 		return
 	}
 
+<<<<<<< HEAD
 	req_body := url.Values{}
 	req_body.Set("username", username)
 	req_body.Set("password", password)
@@ -106,6 +122,22 @@ func main() {
         }
     }
 	req, err := http.NewRequest(method, *oauth_url, payload)
+=======
+	if len(output_file) == 0 {
+		log.Println("invalid output file")
+		return
+	}
+
+	req_body := url.Values{}
+	req_body.Set("username", username)
+	req_body.Set("password", password)
+	req_body.Set("grant_type", oauth_grant_type)
+
+	var payload = strings.NewReader(req_body.Encode())
+	
+	client := &http.Client{}
+	req, err := http.NewRequest(method, oauth_url, payload)
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 
 	if err != nil {
 		fmt.Println(err)
@@ -115,7 +147,11 @@ func main() {
 	auth := base64.StdEncoding.EncodeToString([]byte(client_id + ":" + client_secret))
 	req.Header.Set("Authorization", "Basic " + auth)
 	req.Header.Add("Content-Type", oauth_content_type)
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	res, err := client.Do(req)
 	if err != nil {
 			log.Fatal(err)
@@ -135,11 +171,16 @@ func main() {
 	var authToken AuthToken
 	json.Unmarshal([]byte(string(body)), &authToken)
 
+<<<<<<< HEAD
 	f, err := os.Create(*output_file)
+=======
+	f, err := os.Create(output_file)
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	if err != nil {
 		log.Fatal(err)
 	}
 	f.WriteString(authToken.AccessToken)
+<<<<<<< HEAD
 
 	// Write refresh token to file if it exists in response
     if authToken.RefreshToken != "" {
@@ -150,4 +191,6 @@ func main() {
         defer rf.Close()
         rf.WriteString(authToken.RefreshToken)
     }
+=======
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 }
