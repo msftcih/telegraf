@@ -65,6 +65,7 @@ func main() {
 		return
 	}
 
+<<<<<<< HEAD
 	req_body := url.Values{}
 	req_body.Set("username", username)
 	req_body.Set("password", password)
@@ -106,6 +107,22 @@ func main() {
         }
     }
 	req, err := http.NewRequest(method, *oauth_url, payload)
+=======
+	if len(output_file) == 0 {
+		log.Println("invalid output file")
+		return
+	}
+
+	req_body := url.Values{}
+	req_body.Set("username", username)
+	req_body.Set("password", password)
+	req_body.Set("grant_type", oauth_grant_type)
+
+	var payload = strings.NewReader(req_body.Encode())
+	
+	client := &http.Client{}
+	req, err := http.NewRequest(method, oauth_url, payload)
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 
 	if err != nil {
 		fmt.Println(err)
@@ -115,7 +132,11 @@ func main() {
 	auth := base64.StdEncoding.EncodeToString([]byte(client_id + ":" + client_secret))
 	req.Header.Set("Authorization", "Basic " + auth)
 	req.Header.Add("Content-Type", oauth_content_type)
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	res, err := client.Do(req)
 	if err != nil {
 			log.Fatal(err)
@@ -135,11 +156,16 @@ func main() {
 	var authToken AuthToken
 	json.Unmarshal([]byte(string(body)), &authToken)
 
+<<<<<<< HEAD
 	f, err := os.Create(*output_file)
+=======
+	f, err := os.Create(output_file)
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 	if err != nil {
 		log.Fatal(err)
 	}
 	f.WriteString(authToken.AccessToken)
+<<<<<<< HEAD
 
 	// Write refresh token to file if it exists in response
     if authToken.RefreshToken != "" {
@@ -150,4 +176,6 @@ func main() {
         defer rf.Close()
         rf.WriteString(authToken.RefreshToken)
     }
+=======
+>>>>>>> 3d56013b1 (Implement OAuth2 password credentials grant flow)
 }
