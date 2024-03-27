@@ -138,7 +138,13 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
 		bearer := "Bearer " + strings.TrimSpace(token.String())
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.TrimSpace(token.String())
+		}
+
 		token.Destroy()
 		request.Header.Set("Authorization", bearer)
 	} else if h.TokenFile != "" {
