@@ -45,6 +45,7 @@ type HTTP struct {
 	Log                telegraf.Logger           `toml:"-"`
 
 	common_http.HTTPClientConfig
+<<<<<<< HEAD
 
 	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;use 'token_file' instead"`
 	Token       config.Secret `toml:"token"`
@@ -55,6 +56,8 @@ type HTTP struct {
 	Log                telegraf.Logger   `toml:"-"`
 
 	httpconfig.HTTPClientConfig
+=======
+>>>>>>> 5478ca465 (Add a flag to remove bearer token prefix in Authorization header)
 
 	client     *http.Client
 	parserFunc telegraf.ParserFunc
@@ -132,8 +135,27 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		return err
 	}
 
+<<<<<<< HEAD
 	if h.BearerToken != "" {
 		token, err := os.ReadFile(h.BearerToken)
+=======
+	if !h.Token.Empty() {
+		token, err := h.Token.Get()
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
+		bearer := "Bearer " + strings.TrimSpace(token.String())
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.TrimSpace(token.String())
+		}
+
+		token.Destroy()
+		request.Header.Set("Authorization", bearer)
+	} else if h.TokenFile != "" {
+		token, err := os.ReadFile(h.TokenFile)
+>>>>>>> 5478ca465 (Add a flag to remove bearer token prefix in Authorization header)
 		if err != nil {
 			return err
 		}
