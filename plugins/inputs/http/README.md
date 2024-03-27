@@ -55,6 +55,7 @@ to use them.
   ## Use either the token itself or the token file if you need a token.
   # token = "eyJhbGc...Qssw5c"
   # token_file = "/path/to/file"
+  # remove_bearer_token_prefix = false
 
   ## Optional HTTP Basic Auth Credentials
   # username = "username"
