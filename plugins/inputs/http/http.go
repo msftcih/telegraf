@@ -36,34 +36,22 @@ type HTTP struct {
 	Password config.Secret `toml:"password"`
 
 	// Bearer authentication
-<<<<<<< HEAD
+
 	BearerToken             string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
 	RemoveBearerTokenPrefix bool          `toml:"remove_bearer_token_prefix"`
 	Token                   config.Secret `toml:"token"`
 	TokenFile               string        `toml:"token_file"`
-=======
-<<<<<<< HEAD
+
 	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
 	Token       config.Secret `toml:"token"`
 	TokenFile   string        `toml:"token_file"`
->>>>>>> f0927f28f (updates to http.go)
+
 
 	Headers            map[string]*config.Secret `toml:"headers"`
 	SuccessStatusCodes []int                     `toml:"success_status_codes"`
 	Log                telegraf.Logger           `toml:"-"`
 
 	common_http.HTTPClientConfig
-=======
-	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;use 'token_file' instead"`
-	Token       config.Secret `toml:"token"`
-	TokenFile   string        `toml:"token_file"`
-
-	Headers            map[string]string `toml:"headers"`
-	SuccessStatusCodes []int             `toml:"success_status_codes"`
-	Log                telegraf.Logger   `toml:"-"`
-
-	httpconfig.HTTPClientConfig
->>>>>>> e8b06347e (updates to http.go)
 
 	client     *http.Client
 	parserFunc telegraf.ParserFunc
@@ -154,7 +142,13 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
 		bearer := "Bearer " + strings.TrimSpace(token.String())
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.TrimSpace(token.String())
+		}
+
 		token.Destroy()
 		request.Header.Set("Authorization", bearer)
 	} else if h.TokenFile != "" {
@@ -163,6 +157,7 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		if err != nil {
 			return err
 		}
+
 
 		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
 		bearer := "Bearer " + strings.TrimSpace(token.String())
@@ -177,6 +172,7 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		if err != nil {
 			return err
 		}
+
 
 		bearer := "Bearer " + strings.Trim(string(token), "\n")
 		if h.RemoveBearerTokenPrefix {
