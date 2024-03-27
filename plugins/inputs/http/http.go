@@ -38,8 +38,9 @@ type HTTP struct {
 	Password config.Secret `toml:"password"`
 
 	// Bearer authentication
-	Token     config.Secret `toml:"token"`
-	TokenFile string        `toml:"token_file"`
+	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
+	Token       config.Secret `toml:"token"`
+	TokenFile   string        `toml:"token_file"`
 
 	Headers            map[string]*config.Secret `toml:"headers"`
 	SuccessStatusCodes []int                     `toml:"success_status_codes"`
@@ -127,19 +128,38 @@ func (h *HTTP) gatherURL(
 		return err
 	}
 
-	if h.BearerToken != "" {
-		token, err := os.ReadFile(h.BearerToken)
+	if !h.Token.Empty() {
+		token, err := h.Token.Get()
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
+		bearer := "Bearer " + strings.TrimSpace(token.String())
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.TrimSpace(token.String())
+		}
+
+		token.Destroy()
+		request.Header.Set("Authorization", bearer)
+	} else if h.TokenFile != "" {
+		token, err := os.ReadFile(h.TokenFile)
+		if err != nil {
+			return err
+		}
+
 		bearer := "Bearer " + strings.Trim(string(token), "\n")
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.Trim(string(token), "\n")
+		}
+
 		request.Header.Set("Authorization", bearer)
 	}
 
 	if h.ContentEncoding == "gzip" {
 		request.Header.Set("Content-Encoding", "gzip")
 	}
-	
+
 	subscriptionKey := os.Getenv("subscriptionkey")
 	if len(subscriptionKey) > 0 {
 		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
