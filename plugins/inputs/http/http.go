@@ -36,15 +36,15 @@ type HTTP struct {
 	Password config.Secret `toml:"password"`
 
 	// Bearer authentication
-	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;use 'token_file' instead"`
+	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
 	Token       config.Secret `toml:"token"`
 	TokenFile   string        `toml:"token_file"`
 
-	Headers            map[string]string `toml:"headers"`
-	SuccessStatusCodes []int             `toml:"success_status_codes"`
-	Log                telegraf.Logger   `toml:"-"`
+	Headers            map[string]*config.Secret `toml:"headers"`
+	SuccessStatusCodes []int                     `toml:"success_status_codes"`
+	Log                telegraf.Logger           `toml:"-"`
 
-	httpconfig.HTTPClientConfig
+	common_http.HTTPClientConfig
 
 	client     *http.Client
 	parserFunc telegraf.ParserFunc
@@ -127,7 +127,13 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
 		bearer := "Bearer " + strings.TrimSpace(token.String())
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.TrimSpace(token.String())
+		}
+
 		token.Destroy()
 		request.Header.Set("Authorization", bearer)
 	} else if h.TokenFile != "" {
@@ -135,7 +141,12 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		if err != nil {
 			return err
 		}
+
 		bearer := "Bearer " + strings.Trim(string(token), "\n")
+		if h.RemoveBearerTokenPrefix {
+			bearer = strings.Trim(string(token), "\n")
+		}
+
 		request.Header.Set("Authorization", bearer)
 	}
 

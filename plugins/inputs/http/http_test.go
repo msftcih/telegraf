@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/influxdata/telegraf/config"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/influxdata/telegraf"
@@ -393,6 +395,79 @@ func TestOAuthClientCredentialsGrant(t *testing.T) {
 				case "/token":
 					tt.tokenHandler(t, w, r)
 				}
+			})
+
+			tt.plugin.SetParserFunc(func() (telegraf.Parser, error) {
+				p := &value.Parser{
+					MetricName: "metric",
+					DataType:   "string",
+				}
+				err := p.Init()
+				return p, err
+			})
+
+			err = tt.plugin.Init()
+			require.NoError(t, err)
+
+			var acc testutil.Accumulator
+			err = tt.plugin.Gather(&acc)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestOAuthPasswordCredentialsGrantWithTokenFile(t *testing.T) {
+	ts := httptest.NewServer(http.NotFoundHandler())
+	defer ts.Close()
+
+	var token = "2YotnFZFEjr1zCsicMWpAA"
+
+	u, err := url.Parse("http://" + ts.Listener.Addr().String())
+	require.NoError(t, err)
+
+	// Create token file
+	token_file := "auth_token.txt"
+	f, err := os.Create(token_file)
+	require.NoError(t, err)
+	f.WriteString(token)
+
+	tests := []struct {
+		name    string
+		plugin  *httpplugin.HTTP
+		handler TestHandlerFunc
+	}{
+
+		{
+			name: "success_token_with_bearer_auth_prefix",
+			plugin: &httpplugin.HTTP{
+				URLs:      []string{u.String() + "/write"},
+				TokenFile: token_file,
+				Log:       testutil.Logger{},
+			},
+			handler: func(t *testing.T, w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, []string{"Bearer " + token}, r.Header["Authorization"])
+				w.WriteHeader(http.StatusOK)
+			},
+		},
+		{
+			name: "success_token_without_bearer_auth_prefix",
+			plugin: &httpplugin.HTTP{
+				URLs:                    []string{u.String() + "/write"},
+				TokenFile:               token_file,
+				RemoveBearerTokenPrefix: true,
+				Log:                     testutil.Logger{},
+			},
+			handler: func(t *testing.T, w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, []string{token}, r.Header["Authorization"])
+				w.WriteHeader(http.StatusOK)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				tt.handler(t, w, r)
 			})
 
 			tt.plugin.SetParserFunc(func() (telegraf.Parser, error) {
