@@ -174,7 +174,7 @@ vet:
 .PHONY: lint-install
 lint-install:
 	@echo "Installing golangci-lint"
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.1
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2
 
 	@echo "Installing markdownlint"
 	npm install -g markdownlint-cli
@@ -229,16 +229,18 @@ clean:
 	rm -rf build
 	rm -rf cmd/telegraf/resource.syso
 	rm -rf cmd/telegraf/versioninfo.json
+	rm -rf tools/config_includer/generator
+	rm -rf tools/config_includer/generator.exe
 	rm -rf tools/custom_builder/custom_builder
 	rm -rf tools/custom_builder/custom_builder.exe
+	rm -rf tools/license_checker/license_checker
+	rm -rf tools/license_checker/license_checker.exe
+	rm -rf tools/package_incus_test/package_incus_test
+	rm -rf tools/package_incus_test/package_incus_test.exe
 	rm -rf tools/readme_config_includer/generator
 	rm -rf tools/readme_config_includer/generator.exe
 	rm -rf tools/readme_linter/readme_linter
 	rm -rf tools/readme_linter/readme_linter.exe
-	rm -rf tools/package_incus_test/package_incus_test
-	rm -rf tools/package_incus_test/package_incus_test.exe
-	rm -rf tools/license_checker/license_checker
-	rm -rf tools/license_checker/license_checker.exe
 
 .PHONY: docker-image
 docker-image:
@@ -249,8 +251,8 @@ plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
 
 .PHONY: ci
 ci:
-	docker build -t quay.io/influxdb/telegraf-ci:1.22.0 - < scripts/ci.docker
-	docker push quay.io/influxdb/telegraf-ci:1.22.0
+	docker build -t quay.io/influxdb/telegraf-ci:1.22.2 - < scripts/ci.docker
+	docker push quay.io/influxdb/telegraf-ci:1.22.2
 
 .PHONY: install
 install: $(buildbin)

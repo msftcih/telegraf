@@ -34,6 +34,14 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
+## Secret-store support
+
+This plugin supports secrets from secret-stores for the `username` and
+`password` options. See the [secret-store documentation][SECRETSTORE] for more
+details on how to use them.
+
+[SECRETSTORE]: ../../../docs/CONFIGURATION.md#secret-store-secrets
+
 ## Configuration
 
 ```toml @sample.conf
@@ -52,6 +60,18 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   ## redial in case of failures after
   # redial = "10s"
 
+  ## gRPC Keepalive settings
+  ## See https://pkg.go.dev/google.golang.org/grpc/keepalive
+  ## The client will ping the server to see if the transport is still alive if it has
+  ## not see any activity for the given time.
+  ## If not set, none of the keep-alive setting (including those below) will be applied.
+  ## If set and set below 10 seconds, the gRPC library will apply a minimum value of 10s will be used instead.
+  # keepalive_time = ""
+
+  ## Timeout for seeing any activity after the keep-alive probe was
+  ## sent. If no activity is seen the connection is closed.
+  # keepalive_timeout = ""
+
   ## gRPC Maximum Message Size
   # max_msg_size = "4MB"
 
@@ -62,8 +82,11 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   # trim_field_names = false
 
   ## Guess the path-tag if an update does not contain a prefix-path
-  ## If enabled, the common-path of all elements in the update is used.
-  # guess_path_tag = false
+  ## Supported values are
+  ##   none         -- do not add a 'path' tag
+  ##   common path  -- use the common path elements of all fields in an update
+  ##   subscription -- use the subscription path
+  # path_guessing_strategy = "none"
 
   ## enable client-side TLS and define CA to authenticate the device
   # enable_tls = false
@@ -134,7 +157,7 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   #  ## settings are valid:
   #  ##   unconditional -- always match
   #  ##   name          -- match by the "name" key
-  #  ##                    This resembles the previsou 'tag-only' behavior.
+  #  ##                    This resembles the previous 'tag-only' behavior.
   #  ##   elements      -- match by the keys in the path filtered by the path
   #  ##                    parts specified `elements` below
   #  ## By default, 'elements' is used if the 'elements' option is provided,
@@ -163,12 +186,14 @@ ifcounters,path=openconfig-interfaces:/interfaces/interface/state/counters,host=
 
 ## Troubleshooting
 
+### Empty metric-name warning
+
 Some devices (e.g. Juniper) report spurious data with response paths not
 corresponding to any subscription. In those cases, Telegraf will not be able
 to determine the metric name for the response and you get an
 *empty metric-name warning*
 
-For examplem if you subscribe to `/junos/system/linecard/cpu/memory` but the
+For example if you subscribe to `/junos/system/linecard/cpu/memory` but the
 corresponding response arrives with path
 `/components/component/properties/property/...` To avoid those issues, you can
 manually map the response to a metric name using the `aliases` option like
@@ -190,3 +215,14 @@ manually map the response to a metric name using the `aliases` option like
 
 If this does *not* solve the issue, please follow the warning instructions and
 open an issue with the response, your configuration and the metric you expect.
+
+### Missing `path` tag
+
+Some devices (e.g. Arista) omit the prefix and specify the path in the update
+if there is only one value reported. This leads to a missing `path` tag for
+the resulting metrics. In those cases you should set `path_guessing_strategy`
+to `subscription` to use the subscription path as `path` tag.
+
+Other devices might omit the prefix in updates altogether. Here setting
+`path_guessing_strategy` to `common path` can help to infer the `path` tag by
+using the part of the path that is common to all values in the update.

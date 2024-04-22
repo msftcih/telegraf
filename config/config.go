@@ -265,6 +265,11 @@ type AgentConfig struct {
 	// Flag to always keep tags explicitly defined in the global tags section
 	// and ensure those tags always pass filtering.
 	AlwaysIncludeGlobalTags bool `toml:"always_include_global_tags"`
+
+	// Flag to skip running processors after aggregators
+	// By default, processors are run a second time after aggregators. Changing
+	// this setting to true will skip the second run of processors.
+	SkipProcessorsAfterAggregators bool `toml:"skip_processors_after_aggregators"`
 }
 
 // InputNames returns a list of strings of the configured inputs.
@@ -473,7 +478,12 @@ func (c *Config) LoadAll(configFiles ...string) error {
 	}
 
 	// Check if there is enough lockable memory for the secret
-	c.NumberSecrets = uint64(secretCount.Load())
+	count := secretCount.Load()
+	if count < 0 {
+		log.Printf("E! Invalid secret count %d, please report this incident including your configuration!", count)
+		count = 0
+	}
+	c.NumberSecrets = uint64(count)
 
 	// Let's link all secrets to their secret-stores
 	return c.LinkSecrets()
@@ -1422,6 +1432,7 @@ func (c *Config) buildInput(name string, tbl *ast.Table) (*models.InputConfig, e
 	c.getFieldDuration(tbl, "precision", &cp.Precision)
 	c.getFieldDuration(tbl, "collection_jitter", &cp.CollectionJitter)
 	c.getFieldDuration(tbl, "collection_offset", &cp.CollectionOffset)
+	c.getFieldString(tbl, "startup_error_behavior", &cp.StartupErrorBehavior)
 	c.getFieldString(tbl, "name_prefix", &cp.MeasurementPrefix)
 	c.getFieldString(tbl, "name_suffix", &cp.MeasurementSuffix)
 	c.getFieldString(tbl, "name_override", &cp.NameOverride)
@@ -1476,6 +1487,7 @@ func (c *Config) buildOutput(name string, tbl *ast.Table) (*models.OutputConfig,
 	c.getFieldString(tbl, "name_override", &oc.NameOverride)
 	c.getFieldString(tbl, "name_suffix", &oc.NameSuffix)
 	c.getFieldString(tbl, "name_prefix", &oc.NamePrefix)
+	c.getFieldString(tbl, "startup_error_behavior", &oc.StartupErrorBehavior)
 
 	if c.hasErrs() {
 		return nil, c.firstErr()
@@ -1500,7 +1512,7 @@ func (c *Config) missingTomlField(_ reflect.Type, key string) error {
 		"name_override", "name_prefix", "name_suffix", "namedrop", "namedrop_separator", "namepass", "namepass_separator",
 		"order",
 		"pass", "period", "precision",
-		"tagdrop", "tagexclude", "taginclude", "tagpass", "tags":
+		"tagdrop", "tagexclude", "taginclude", "tagpass", "tags", "startup_error_behavior":
 
 	// Secret-store options to ignore
 	case "id":

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
@@ -40,8 +41,9 @@ type handler struct {
 	trace               bool
 	canonicalFieldNames bool
 	trimSlash           bool
-	guessPathTag        bool
+	guessPathStrategy   string
 	log                 telegraf.Logger
+	keepalive.ClientParameters
 }
 
 // SubscribeGNMI and extract telemetry data
@@ -60,6 +62,10 @@ func (h *handler) subscribeGNMI(ctx context.Context, acc telegraf.Accumulator, t
 		opts = append(opts, grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(h.maxMsgSize),
 		))
+	}
+
+	if h.ClientParameters.Time > 0 {
+		opts = append(opts, grpc.WithKeepaliveParams(h.ClientParameters))
 	}
 
 	client, err := grpc.DialContext(ctx, h.address, opts...)
@@ -198,7 +204,7 @@ func (h *handler) handleSubscribeResponseUpdate(acc telegraf.Accumulator, respon
 
 	// Some devices do not provide a prefix, so do some guesswork based
 	// on the paths of the fields
-	if headerTags["path"] == "" && h.guessPathTag {
+	if headerTags["path"] == "" && h.guessPathStrategy == "common path" {
 		if prefixPath := guessPrefixFromUpdate(valueFields); prefixPath != "" {
 			headerTags["path"] = prefixPath
 		}
@@ -232,13 +238,17 @@ func (h *handler) handleSubscribeResponseUpdate(acc telegraf.Accumulator, respon
 		}
 		aliasInfo := newInfoFromString(aliasPath)
 
+		if tags["path"] == "" && h.guessPathStrategy == "subscription" {
+			tags["path"] = aliasInfo.String()
+		}
+
 		// Group metrics
 		var key string
 		if h.canonicalFieldNames {
 			// Strip the origin is any for the field names
-			if parts := strings.SplitN(strings.ReplaceAll(field.path.String(), "-", "_"), ":", 2); len(parts) == 2 {
-				key = parts[1]
-			}
+			field.path.origin = ""
+			key = field.path.String()
+			key = strings.ReplaceAll(key, "-", "_")
 		} else {
 			// If the alias is a subpath of the field path and the alias is
 			// shorter than the full path to avoid an empty key, then strip the

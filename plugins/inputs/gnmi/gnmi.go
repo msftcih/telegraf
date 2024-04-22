@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/gnxi/utils/xpath"
 	gnmiLib "github.com/openconfig/gnmi/proto/gnmi"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/influxdata/telegraf"
@@ -47,15 +48,18 @@ type GNMI struct {
 	Target              string            `toml:"target"`
 	UpdatesOnly         bool              `toml:"updates_only"`
 	VendorSpecific      []string          `toml:"vendor_specific"`
-	Username            string            `toml:"username"`
-	Password            string            `toml:"password"`
+	Username            config.Secret     `toml:"username"`
+	Password            config.Secret     `toml:"password"`
 	Redial              config.Duration   `toml:"redial"`
 	MaxMsgSize          config.Size       `toml:"max_msg_size"`
 	Trace               bool              `toml:"dump_responses"`
 	CanonicalFieldNames bool              `toml:"canonical_field_names"`
 	TrimFieldNames      bool              `toml:"trim_field_names"`
-	GuessPathTag        bool              `toml:"guess_path_tag"`
+	GuessPathTag        bool              `toml:"guess_path_tag" deprecated:"1.30.0;use 'path_guessing_strategy' instead"`
+	GuessPathStrategy   string            `toml:"path_guessing_strategy"`
 	EnableTLS           bool              `toml:"enable_tls" deprecated:"1.27.0;use 'tls_enable' instead"`
+	KeepaliveTime       config.Duration   `toml:"keepalive_time"`
+	KeepaliveTimeout    config.Duration   `toml:"keepalive_timeout"`
 	Log                 telegraf.Logger   `toml:"-"`
 	internaltls.ClientConfig
 
@@ -67,29 +71,23 @@ type GNMI struct {
 
 // Subscription for a gNMI client
 type Subscription struct {
-	Name   string
-	Origin string
-	Path   string
-
-	fullPath *gnmiLib.Path
-
-	// Subscription mode and interval
-	SubscriptionMode string          `toml:"subscription_mode"`
-	SampleInterval   config.Duration `toml:"sample_interval"`
-
-	// Duplicate suppression
+	Name              string          `toml:"name"`
+	Origin            string          `toml:"origin"`
+	Path              string          `toml:"path"`
+	SubscriptionMode  string          `toml:"subscription_mode"`
+	SampleInterval    config.Duration `toml:"sample_interval"`
 	SuppressRedundant bool            `toml:"suppress_redundant"`
 	HeartbeatInterval config.Duration `toml:"heartbeat_interval"`
+	TagOnly           bool            `toml:"tag_only" deprecated:"1.25.0;2.0.0;please use 'tag_subscription's instead"`
 
-	// Mark this subscription as a tag-only lookup source, not emitting any metric
-	TagOnly bool `toml:"tag_only" deprecated:"1.25.0;2.0.0;please use 'tag_subscription's instead"`
+	fullPath *gnmiLib.Path
 }
 
 // Tag Subscription for a gNMI client
 type TagSubscription struct {
 	Subscription
-	Match    string `toml:"match"`
-	Elements []string
+	Match    string   `toml:"match"`
+	Elements []string `toml:"elements"`
 }
 
 func (*GNMI) SampleConfig() string {
@@ -105,6 +103,21 @@ func (c *GNMI) Init() error {
 	// Check vendor_specific options configured by user
 	if err := choice.CheckSlice(c.VendorSpecific, supportedExtensions); err != nil {
 		return fmt.Errorf("unsupported vendor_specific option: %w", err)
+	}
+
+	// Check path guessing and handle deprecated option
+	if c.GuessPathTag {
+		if c.GuessPathStrategy == "" {
+			c.GuessPathStrategy = "common path"
+		}
+		if c.GuessPathStrategy != "common path" {
+			return errors.New("conflicting settings between 'guess_path_tag' and 'path_guessing_strategy'")
+		}
+	}
+	switch c.GuessPathStrategy {
+	case "", "none", "common path", "subscription":
+	default:
+		return fmt.Errorf("invalid 'path_guessing_strategy' %q", c.GuessPathStrategy)
 	}
 
 	// Use the new TLS option for enabling
@@ -201,8 +214,23 @@ func (c *GNMI) Start(acc telegraf.Accumulator) error {
 	// Prepare the context, optionally with credentials
 	var ctx context.Context
 	ctx, c.cancel = context.WithCancel(context.Background())
-	if len(c.Username) > 0 {
-		ctx = metadata.AppendToOutgoingContext(ctx, "username", c.Username, "password", c.Password)
+
+	if !c.Username.Empty() {
+		usernameSecret, err := c.Username.Get()
+		if err != nil {
+			return fmt.Errorf("getting username failed: %w", err)
+		}
+		username := usernameSecret.String()
+		usernameSecret.Destroy()
+
+		passwordSecret, err := c.Password.Get()
+		if err != nil {
+			return fmt.Errorf("getting password failed: %w", err)
+		}
+		password := passwordSecret.String()
+		passwordSecret.Destroy()
+
+		ctx = metadata.AppendToOutgoingContext(ctx, "username", username, "password", password)
 	}
 
 	// Create a goroutine for each device, dial and subscribe
@@ -221,8 +249,13 @@ func (c *GNMI) Start(acc telegraf.Accumulator) error {
 				trace:               c.Trace,
 				canonicalFieldNames: c.CanonicalFieldNames,
 				trimSlash:           c.TrimFieldNames,
-				guessPathTag:        c.GuessPathTag,
+				guessPathStrategy:   c.GuessPathStrategy,
 				log:                 c.Log,
+				ClientParameters: keepalive.ClientParameters{
+					Time:                time.Duration(c.KeepaliveTime),
+					Timeout:             time.Duration(c.KeepaliveTimeout),
+					PermitWithoutStream: false,
+				},
 			}
 			for ctx.Err() == nil {
 				if err := h.subscribeGNMI(ctx, acc, tlscfg, request); err != nil && ctx.Err() == nil {
