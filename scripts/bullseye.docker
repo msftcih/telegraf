@@ -1,43 +1,32 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye AS builder
-=======
-FROM golang:1.21.5-bullseye as builder
->>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
-=======
-FROM golang:1.21.6-bullseye as builder
->>>>>>> c0d417db0 (Package Upgrades from Telegraf source)
-=======
-FROM golang:1.22.0-bullseye as builder
->>>>>>> aeacfa72d (Updated golang versions)
+
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.24-bullseye AS builder
+
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
 RUN make go-install
 RUN go build cmd/oauth/get_token.go
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 42b7b631d (Updates to Telegraf)
 RUN go build cmd/oauth/get_classic_token_username_password.go
 RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
 RUN go build cmd/oauth/get_oauth2_token_password_credentials.go
-=======
-RUN go build cmd/oauth/get_token_username_password.go
-RUN go build cmd/oauth/get_token_basic_auth_username_password.go
->>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 
-FROM buildpack-deps:bullseye-curl
+FROM mcr.microsoft.com/mirror/docker/library/buildpack-deps:bullseye
+# Update libsystemd0,libpam0 and libc-bin (ldd) to latest, remove libsvn packages
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsystemd0 libc-bin \
+    && apt-get remove -y libsvn1 libsvn-dev 2>/dev/null || true \
+    && apt-get autoremove -y \
+    && apt-get install --only-upgrade -y libpam0g libpam-modules libpam-modules-bin libpam-runtime \
+    && dpkg-query -W -f='${Package} ${Version}\n' libsystemd0 libc-bin \
+    && ldd --version \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /go/bin/* /usr/bin/
 COPY etc/telegraf.conf /etc/telegraf/telegraf.conf
 
 RUN mkdir -p /tmp/telegraf
 COPY --from=builder /go/bin/* /usr/bin/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token /tmp/telegraf/
-<<<<<<< HEAD
-<<<<<<< HEAD
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
@@ -48,25 +37,10 @@ RUN chmod +x /tmp/telegraf/get_classic_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
 RUN chmod +x /tmp/telegraf/get_oauth2_token_password_credentials
-=======
-=======
-COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
->>>>>>> 42b7b631d (Updates to Telegraf)
-COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
-COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
-
-RUN chmod +x /tmp/telegraf/get_token
-RUN chmod +x /tmp/telegraf/get_classic_token_username_password
-RUN chmod +x /tmp/telegraf/get_token_username_password
-RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
->>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 
 EXPOSE 8125/udp 8092/udp 8094
 
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
-<<<<<<< HEAD
 RUN chmod +x entrypoint.sh
-=======
->>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["telegraf"]
