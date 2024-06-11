@@ -1,3 +1,4 @@
+//go:generate ../../../tools/config_includer/generator
 //go:generate ../../../tools/readme_config_includer/generator
 package gnmi
 
@@ -19,6 +20,7 @@ import (
 	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal/choice"
 	internaltls "github.com/influxdata/telegraf/plugins/common/tls"
+	"github.com/influxdata/telegraf/plugins/common/yangmodel"
 	"github.com/influxdata/telegraf/plugins/inputs"
 )
 
@@ -26,10 +28,10 @@ import (
 var sampleConfig string
 
 // Define the warning to show if we cannot get a metric name.
-const emptyNameWarning = `Got empty metric-name for response, usually indicating
-configuration issues as the response cannot be related to any subscription.
-Please open an issue on https://github.com/influxdata/telegraf including your
-device model and the following response data:
+const emptyNameWarning = `Got empty metric-name for response (field %q), usually
+indicating configuration issues as the response cannot be related to any
+subscription.Please open an issue on https://github.com/influxdata/telegraf
+including your device model and the following response data:
 %+v
 This message is only printed once.`
 
@@ -38,33 +40,36 @@ var supportedExtensions = []string{"juniper_header"}
 
 // gNMI plugin instance
 type GNMI struct {
-	Addresses           []string          `toml:"addresses"`
-	Subscriptions       []Subscription    `toml:"subscription"`
-	TagSubscriptions    []TagSubscription `toml:"tag_subscription"`
-	Aliases             map[string]string `toml:"aliases"`
-	Encoding            string            `toml:"encoding"`
-	Origin              string            `toml:"origin"`
-	Prefix              string            `toml:"prefix"`
-	Target              string            `toml:"target"`
-	UpdatesOnly         bool              `toml:"updates_only"`
-	VendorSpecific      []string          `toml:"vendor_specific"`
-	Username            config.Secret     `toml:"username"`
-	Password            config.Secret     `toml:"password"`
-	Redial              config.Duration   `toml:"redial"`
-	MaxMsgSize          config.Size       `toml:"max_msg_size"`
-	Trace               bool              `toml:"dump_responses"`
-	CanonicalFieldNames bool              `toml:"canonical_field_names"`
-	TrimFieldNames      bool              `toml:"trim_field_names"`
-	GuessPathTag        bool              `toml:"guess_path_tag" deprecated:"1.30.0;use 'path_guessing_strategy' instead"`
-	GuessPathStrategy   string            `toml:"path_guessing_strategy"`
-	EnableTLS           bool              `toml:"enable_tls" deprecated:"1.27.0;use 'tls_enable' instead"`
-	KeepaliveTime       config.Duration   `toml:"keepalive_time"`
-	KeepaliveTimeout    config.Duration   `toml:"keepalive_timeout"`
-	Log                 telegraf.Logger   `toml:"-"`
+	Addresses            []string          `toml:"addresses"`
+	Subscriptions        []Subscription    `toml:"subscription"`
+	TagSubscriptions     []TagSubscription `toml:"tag_subscription"`
+	Aliases              map[string]string `toml:"aliases"`
+	Encoding             string            `toml:"encoding"`
+	Origin               string            `toml:"origin"`
+	Prefix               string            `toml:"prefix"`
+	Target               string            `toml:"target"`
+	UpdatesOnly          bool              `toml:"updates_only"`
+	VendorSpecific       []string          `toml:"vendor_specific"`
+	Username             config.Secret     `toml:"username"`
+	Password             config.Secret     `toml:"password"`
+	Redial               config.Duration   `toml:"redial"`
+	MaxMsgSize           config.Size       `toml:"max_msg_size"`
+	Trace                bool              `toml:"dump_responses"`
+	CanonicalFieldNames  bool              `toml:"canonical_field_names"`
+	TrimFieldNames       bool              `toml:"trim_field_names"`
+	PrefixTagKeyWithPath bool              `toml:"prefix_tag_key_with_path"`
+	GuessPathTag         bool              `toml:"guess_path_tag" deprecated:"1.30.0;1.35.0;use 'path_guessing_strategy' instead"`
+	GuessPathStrategy    string            `toml:"path_guessing_strategy"`
+	EnableTLS            bool              `toml:"enable_tls" deprecated:"1.27.0;1.35.0;use 'tls_enable' instead"`
+	KeepaliveTime        config.Duration   `toml:"keepalive_time"`
+	KeepaliveTimeout     config.Duration   `toml:"keepalive_timeout"`
+	YangModelPaths       []string          `toml:"yang_model_paths"`
+	Log                  telegraf.Logger   `toml:"-"`
 	internaltls.ClientConfig
 
 	// Internal state
 	internalAliases map[*pathInfo]string
+	decoder         *yangmodel.Decoder
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
 }
@@ -78,7 +83,7 @@ type Subscription struct {
 	SampleInterval    config.Duration `toml:"sample_interval"`
 	SuppressRedundant bool            `toml:"suppress_redundant"`
 	HeartbeatInterval config.Duration `toml:"heartbeat_interval"`
-	TagOnly           bool            `toml:"tag_only" deprecated:"1.25.0;2.0.0;please use 'tag_subscription's instead"`
+	TagOnly           bool            `toml:"tag_only" deprecated:"1.25.0;1.35.0;please use 'tag_subscription's instead"`
 
 	fullPath *gnmiLib.Path
 }
@@ -195,6 +200,37 @@ func (c *GNMI) Init() error {
 	}
 	c.Log.Debugf("Internal alias mapping: %+v", c.internalAliases)
 
+	// Warn about configures insecure cipher suites
+	insecure := internaltls.InsecureCiphers(c.ClientConfig.TLSCipherSuites)
+	if len(insecure) > 0 {
+		c.Log.Warnf("Configured insecure cipher suites: %s", strings.Join(insecure, ","))
+	}
+
+	// Check the TLS configuration
+	if _, err := c.ClientConfig.TLSConfig(); err != nil {
+		if errors.Is(err, internaltls.ErrCipherUnsupported) {
+			secure, insecure := internaltls.Ciphers()
+			c.Log.Info("Supported secure ciphers:")
+			for _, name := range secure {
+				c.Log.Infof("  %s", name)
+			}
+			c.Log.Info("Supported insecure ciphers:")
+			for _, name := range insecure {
+				c.Log.Infof("  %s", name)
+			}
+		}
+		return err
+	}
+
+	// Load the YANG models if specified by the user
+	if len(c.YangModelPaths) > 0 {
+		decoder, err := yangmodel.NewDecoder(c.YangModelPaths...)
+		if err != nil {
+			return fmt.Errorf("creating YANG model decoder failed: %w", err)
+		}
+		c.decoder = decoder
+	}
+
 	return nil
 }
 
@@ -249,7 +285,9 @@ func (c *GNMI) Start(acc telegraf.Accumulator) error {
 				trace:               c.Trace,
 				canonicalFieldNames: c.CanonicalFieldNames,
 				trimSlash:           c.TrimFieldNames,
+				tagPathPrefix:       c.PrefixTagKeyWithPath,
 				guessPathStrategy:   c.GuessPathStrategy,
+				decoder:             c.decoder,
 				log:                 c.Log,
 				ClientParameters: keepalive.ClientParameters{
 					Time:                time.Duration(c.KeepaliveTime),

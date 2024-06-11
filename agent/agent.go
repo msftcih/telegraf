@@ -106,11 +106,6 @@ func (a *Agent) Run(ctx context.Context) error {
 		time.Duration(a.Config.Agent.Interval), a.Config.Agent.Quiet,
 		a.Config.Agent.Hostname, time.Duration(a.Config.Agent.FlushInterval))
 
-	log.Printf("D! [agent] Initializing plugins")
-	if err := a.initPlugins(); err != nil {
-		return err
-	}
-
 	if a.Config.Persister != nil {
 		log.Printf("D! [agent] Initializing plugin states")
 		if err := a.initPersister(); err != nil {
@@ -122,6 +117,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			log.Print("I! [agent] State file does not exist... Skip restoring states...")
 		}
+	}
+
+	log.Printf("D! [agent] Initializing plugins")
+	if err := a.initPlugins(); err != nil {
+		return err
 	}
 
 	startTime := time.Now()
@@ -974,7 +974,7 @@ func (a *Agent) Test(ctx context.Context, wait time.Duration) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		s := &influx.Serializer{SortFields: true}
+		s := &influx.Serializer{SortFields: true, UintSupport: true}
 		for metric := range src {
 			octets, err := s.Serialize(metric)
 			if err == nil {

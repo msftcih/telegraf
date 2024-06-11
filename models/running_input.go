@@ -7,6 +7,7 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
+	logging "github.com/influxdata/telegraf/logger"
 	"github.com/influxdata/telegraf/selfstat"
 )
 
@@ -40,8 +41,8 @@ func NewRunningInput(input telegraf.Input, config *InputConfig) *RunningInput {
 	}
 
 	inputErrorsRegister := selfstat.Register("gather", "errors", tags)
-	logger := NewLogger("inputs", config.Name, config.Alias)
-	logger.OnErr(func() {
+	logger := logging.NewLogger("inputs", config.Name, config.Alias)
+	logger.RegisterErrorCallback(func() {
 		inputErrorsRegister.Incr(1)
 		GlobalGatherErrors.Incr(1)
 	})
@@ -132,7 +133,7 @@ func (r *RunningInput) Start(acc telegraf.Accumulator) error {
 
 	// Check if the plugin reports a retry-able error, otherwise we exit.
 	var serr *internal.StartupError
-	if !errors.As(err, &serr) || !serr.Retry {
+	if !errors.As(err, &serr) {
 		return err
 	}
 
@@ -140,6 +141,9 @@ func (r *RunningInput) Start(acc telegraf.Accumulator) error {
 	switch r.Config.StartupErrorBehavior {
 	case "", "error": // fall-trough to return the actual error
 	case "retry":
+		if !serr.Retry {
+			return err
+		}
 		r.log.Infof("Startup failed: %v; retrying...", err)
 		return nil
 	case "ignore":

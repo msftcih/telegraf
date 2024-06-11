@@ -71,6 +71,9 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   ##   user    -- username owning the process
   # tag_with = []
 
+  ## Properties to collect
+  ## Available options are "cpu", "limits", "memory", "mmap"
+  # properties = ["cpu", "limits", "memory", "mmap"]
 
   ## Method to use when finding process IDs.  Can be one of 'pgrep', or
   ## 'native'.  The pgrep finder calls the pgrep executable in the PATH while
@@ -94,7 +97,7 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   #    # win_service = []
   #
   #    ## Process filters, multiple are allowed
-  #    ## Regular expressions to use for matching againt the full command
+  #    ## Regular expressions to use for matching against the full command
   #    # patterns = ['.*']
   #    ## List of users owning the process (wildcards are supported)
   #    # users = ['*']
@@ -159,6 +162,8 @@ Below are an example set of tags and fields:
     - cpu_time_system (float)
     - cpu_time_user (float)
     - cpu_usage (float)
+    - disk_read_bytes (int, Linux only, *telegraf* may need to be ran as **root**)
+    - disk_write_bytes (int, Linux only, *telegraf* may need to be ran as **root**)
     - involuntary_context_switches (int)
     - major_faults (int)
     - memory_anonymous (int)

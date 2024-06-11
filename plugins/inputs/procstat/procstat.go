@@ -26,9 +26,14 @@ var sampleConfig string
 
 // execCommand is so tests can mock out exec.Command usage.
 var execCommand = exec.Command
-var availableTags = []string{"cmdline", "pid", "ppid", "status", "user"}
 
 type PID int32
+
+type collectionConfig struct {
+	solarisMode bool
+	tagging     map[string]bool
+	features    map[string]bool
+}
 
 type Procstat struct {
 	PidFinder              string          `toml:"pid_finder"`
@@ -36,26 +41,26 @@ type Procstat struct {
 	Exe                    string          `toml:"exe"`
 	Pattern                string          `toml:"pattern"`
 	Prefix                 string          `toml:"prefix"`
-	CmdLineTag             bool            `toml:"cmdline_tag" deprecated:"1.29.0;use 'tag_with' instead"`
+	CmdLineTag             bool            `toml:"cmdline_tag" deprecated:"1.29.0;1.40.0;use 'tag_with' instead"`
 	ProcessName            string          `toml:"process_name"`
 	User                   string          `toml:"user"`
 	SystemdUnit            string          `toml:"systemd_unit"`
-	SupervisorUnit         []string        `toml:"supervisor_unit" deprecated:"1.29.0;use 'supervisor_units' instead"`
+	SupervisorUnit         []string        `toml:"supervisor_unit" deprecated:"1.29.0;1.40.0;use 'supervisor_units' instead"`
 	SupervisorUnits        []string        `toml:"supervisor_units"`
 	IncludeSystemdChildren bool            `toml:"include_systemd_children"`
 	CGroup                 string          `toml:"cgroup"`
-	PidTag                 bool            `toml:"pid_tag" deprecated:"1.29.0;use 'tag_with' instead"`
+	PidTag                 bool            `toml:"pid_tag" deprecated:"1.29.0;1.40.0;use 'tag_with' instead"`
 	WinService             string          `toml:"win_service"`
 	Mode                   string          `toml:"mode"`
+	Properties             []string        `toml:"properties"`
 	TagWith                []string        `toml:"tag_with"`
 	Filter                 []Filter        `toml:"filter"`
 	Log                    telegraf.Logger `toml:"-"`
 
-	solarisMode bool
-	finder      PIDFinder
-	processes   map[PID]Process
-	tagging     map[string]bool
-	oldMode     bool
+	finder    PIDFinder
+	processes map[PID]Process
+	cfg       collectionConfig
+	oldMode   bool
 
 	createProcess func(PID) (Process, error)
 }
@@ -75,9 +80,6 @@ func (*Procstat) SampleConfig() string {
 }
 
 func (p *Procstat) Init() error {
-	// Check solaris mode
-	p.solarisMode = strings.EqualFold(p.Mode, "solaris")
-
 	// Keep the old settings for compatibility
 	if p.PidTag && !choice.Contains("pid", p.TagWith) {
 		p.TagWith = append(p.TagWith, "pid")
@@ -86,13 +88,29 @@ func (p *Procstat) Init() error {
 		p.TagWith = append(p.TagWith, "cmdline")
 	}
 
-	// Check tagging and setup LUT
-	if err := choice.CheckSlice(p.TagWith, availableTags); err != nil {
-		return fmt.Errorf("invalid tag_with setting: %w", err)
-	}
-	p.tagging = make(map[string]bool, len(p.TagWith))
+	// Configure metric collection features
+	p.cfg.solarisMode = strings.EqualFold(p.Mode, "solaris")
+
+	// Convert tagging settings
+	p.cfg.tagging = make(map[string]bool, len(p.TagWith))
 	for _, tag := range p.TagWith {
-		p.tagging[tag] = true
+		switch tag {
+		case "cmdline", "pid", "ppid", "status", "user":
+		default:
+			return fmt.Errorf("invalid 'tag_with' setting %q", tag)
+		}
+		p.cfg.tagging[tag] = true
+	}
+
+	// Convert collection properties
+	p.cfg.features = make(map[string]bool, len(p.Properties))
+	for _, prop := range p.Properties {
+		switch prop {
+		case "cpu", "limits", "memory", "mmap":
+		default:
+			return fmt.Errorf("invalid 'properties' setting %q", prop)
+		}
+		p.cfg.features[prop] = true
 	}
 
 	// Check if we got any new-style configuration options and determine
@@ -149,6 +167,7 @@ func (p *Procstat) Init() error {
 
 		// New-style operations
 		for i := range p.Filter {
+			p.Filter[i].Log = p.Log
 			if err := p.Filter[i].Init(); err != nil {
 				return fmt.Errorf("initializing filter %d failed: %w", i, err)
 			}
@@ -200,17 +219,23 @@ func (p *Procstat) gatherOld(acc telegraf.Accumulator) error {
 		}
 		count += len(r.PIDs)
 		for _, pid := range r.PIDs {
+			// Check if the process is still running
+			proc, err := p.createProcess(pid)
+			if err != nil {
+				// No problem; process may have ended after we found it or it
+				// might be delivered from a non-checking source like a PID file
+				// of a dead process.
+				continue
+			}
+
 			// Use the cached processes as we need the existing instances
 			// to compute delta-metrics (e.g. cpu-usage).
-			proc, found := p.processes[pid]
-			if !found {
+			if cached, found := p.processes[pid]; found {
+				proc = cached
+			} else {
 				// We've found a process that was not recorded before so add it
 				// to the list of processes
-				proc, err = p.createProcess(pid)
-				if err != nil {
-					// No problem; process may have ended after we found it
-					continue
-				}
+
 				// Assumption: if a process has no name, it probably does not exist
 				if name, _ := proc.Name(); name == "" {
 					continue
@@ -227,7 +252,7 @@ func (p *Procstat) gatherOld(acc telegraf.Accumulator) error {
 				p.processes[pid] = proc
 			}
 			running[pid] = true
-			m := proc.Metric(p.Prefix, p.tagging, p.solarisMode)
+			m := proc.Metric(p.Prefix, &p.cfg)
 			m.SetTime(now)
 			acc.AddMetric(m)
 		}
@@ -326,7 +351,7 @@ func (p *Procstat) gatherNew(acc telegraf.Accumulator) error {
 					p.processes[pid] = proc
 				}
 				running[pid] = true
-				m := proc.Metric(p.Prefix, p.tagging, p.solarisMode)
+				m := proc.Metric(p.Prefix, &p.cfg)
 				m.SetTime(now)
 				acc.AddMetric(m)
 			}
@@ -617,6 +642,9 @@ func (p *Procstat) winServicePIDs() ([]PID, error) {
 
 func init() {
 	inputs.Add("procstat", func() telegraf.Input {
-		return &Procstat{createProcess: newProc}
+		return &Procstat{
+			Properties:    []string{"cpu", "memory", "mmap"},
+			createProcess: newProc,
+		}
 	})
 }
