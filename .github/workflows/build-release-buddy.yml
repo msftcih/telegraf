@@ -31,4 +31,4 @@ jobs:
       with:
         push: false
         tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/master:${{ github.sha }}
-        file: scripts/bullseye
+        file: scripts/bullseye.docker
