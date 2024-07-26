@@ -1,4 +1,4 @@
-name: docker_build_push_acr
+name: ACR Build Release
  
 on:
   workflow_dispatch:
@@ -25,10 +25,13 @@ jobs:
         login-server: ${{ secrets.REGISTRY_LOGIN_SERVER }}
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_PASSWORD }}
+
+    - name: Create Datetime Tag
+      run: echo "NOW=$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
  
     - name: Build the telegraf image and push it to ACR
       uses: docker/build-push-action@v5
       with:
-        push: false
-        tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/master:${{ github.sha }}
+        push: true
+        tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/master:$NOW
         file: scripts/bullseye.docker
