@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gopacket/gopacket"
@@ -157,6 +159,43 @@ func (d *sflowv5Decoder) Decode(srcIP net.IP, payload []byte) ([]telegraf.Metric
 				fields[k] = v
 			}
 			metrics = append(metrics, metric.New("netflow", tags, fields, t))
+		case sflow.DropSample:
+			fields := map[string]interface{}{
+				"ip_version":     decodeSflowIPVersion(msg.IPVersion),
+				"sys_uptime":     msg.Uptime,
+				"agent_subid":    msg.SubAgentId,
+				"seq_number":     sample.Header.SampleSequenceNumber,
+				"sampling_drops": sample.Drops,
+				"in_snmp":        sample.Input,
+				"out_snmp":       sample.Output,
+				"reason":         sample.Reason,
+			}
+
+			var err error
+			fields["agent_ip"], err = decodeIP(msg.AgentIP)
+			if err != nil {
+				return nil, fmt.Errorf("decoding 'agent_ip' failed: %w", err)
+			}
+
+			// Decode the source information
+			if name := decodeSflowSourceInterface(sample.Header.SourceIdType); name != "" {
+				fields[name] = sample.Header.SourceIdValue
+			}
+			// Decode the sampling direction
+			if sample.Header.SourceIdValue == sample.Input {
+				fields["direction"] = "ingress"
+			} else {
+				fields["direction"] = "egress"
+			}
+			recordFields, err := d.decodeFlowRecords(sample.Records)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range recordFields {
+				fields[k] = v
+			}
+			metrics = append(metrics, metric.New("netflow", tags, fields, t))
+
 		default:
 			return nil, fmt.Errorf("unknown record type %T", s)
 		}
@@ -246,12 +285,16 @@ func (d *sflowv5Decoder) decodeFlowRecords(records []sflow.FlowRecord) (map[stri
 			fields["dst_mask"] = record.DstMaskLen
 		case sflow.ExtendedGateway:
 			var err error
+			fields["next_hop_ip_version"] = record.NextHopIPVersion
 			fields["next_hop"], err = decodeIP(record.NextHop)
 			if err != nil {
 				return nil, fmt.Errorf("decoding 'next_hop' failed: %w", err)
 			}
+			fields["bgp_as"] = record.AS
 			fields["bgp_src_as"] = record.SrcAS
 			fields["bgp_dst_as"] = record.ASDestinations
+			fields["bgp_as_path_type"] = record.ASPathType
+			fields["bgp_as_path_length"] = record.ASPathLength
 			fields["bgp_next_hop"], err = decodeIP(record.NextHop)
 			if err != nil {
 				return nil, fmt.Errorf("decoding 'bgp_next_hop' failed: %w", err)
@@ -260,6 +303,28 @@ func (d *sflowv5Decoder) decodeFlowRecords(records []sflow.FlowRecord) (map[stri
 			if len(record.ASPath) > 0 {
 				fields["bgp_next_as"] = record.ASPath[0]
 			}
+			fields["community_length"] = record.CommunitiesLength
+			parts := make([]string, 0, len(record.Communities))
+			for _, c := range record.Communities {
+				parts = append(parts, "0x"+strconv.FormatUint(uint64(c), 16))
+			}
+			fields["communities"] = strings.Join(parts, ",")
+			fields["local_pref"] = record.LocalPref
+		case sflow.EgressQueue:
+			fields["out_queue"] = record.Queue
+		case sflow.ExtendedACL:
+			fields["acl_id"] = record.Number
+			fields["acl_name"] = record.Name
+			switch record.Direction {
+			case 1:
+				fields["direction"] = "ingress"
+			case 2:
+				fields["direction"] = "egress"
+			default:
+				fields["direction"] = "unknown"
+			}
+		case sflow.ExtendedFunction:
+			fields["function"] = record.Symbol
 		default:
 			return nil, fmt.Errorf("unhandled flow record type %T", r.Data)
 		}

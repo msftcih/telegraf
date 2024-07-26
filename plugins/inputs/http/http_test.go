@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/influxdata/telegraf"
+	"github.com/influxdata/telegraf/config"
 	httpconfig "github.com/influxdata/telegraf/plugins/common/http"
 	"github.com/influxdata/telegraf/plugins/common/oauth"
 	httpplugin "github.com/influxdata/telegraf/plugins/inputs/http"
@@ -33,7 +34,8 @@ import (
 func TestHTTPWithJSONFormat(t *testing.T) {
 	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, _ = w.Write([]byte(simpleJSON))
+			_, err := w.Write([]byte(simpleJSON))
+			require.NoError(t, err)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -63,7 +65,7 @@ func TestHTTPWithJSONFormat(t *testing.T) {
 	var metric = acc.Metrics[0]
 	require.Equal(t, metric.Measurement, metricName)
 	require.Len(t, acc.Metrics[0].Fields, 1)
-	require.Equal(t, 1.2, acc.Metrics[0].Fields["a"])
+	require.InDelta(t, 1.2, acc.Metrics[0].Fields["a"], testutil.DefaultDelta)
 	require.Equal(t, acc.Metrics[0].Tags["url"], address)
 }
 
@@ -73,7 +75,8 @@ func TestHTTPHeaders(t *testing.T) {
 	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
 			if r.Header.Get(header) == headerValue {
-				_, _ = w.Write([]byte(simpleJSON))
+				_, err := w.Write([]byte(simpleJSON))
+				require.NoError(t, err)
 			} else {
 				w.WriteHeader(http.StatusForbidden)
 			}
@@ -106,7 +109,8 @@ func TestHTTPContentLengthHeader(t *testing.T) {
 	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
 			if r.Header.Get("Content-Length") != "" {
-				_, _ = w.Write([]byte(simpleJSON))
+				_, err := w.Write([]byte(simpleJSON))
+				require.NoError(t, err)
 			} else {
 				w.WriteHeader(http.StatusForbidden)
 			}
@@ -479,7 +483,8 @@ func TestOAuthPasswordCredentialsGrantWithTokenFile(t *testing.T) {
 func TestHTTPWithCSVFormat(t *testing.T) {
 	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/endpoint" {
-			_, _ = w.Write([]byte(simpleCSVWithHeader))
+			_, err := w.Write([]byte(simpleCSVWithHeader))
+			require.NoError(t, err)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -536,7 +541,8 @@ func TestConnectionOverUnixSocket(t *testing.T) {
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/data" {
 			w.Header().Set("Content-Type", "text/csv")
-			_, _ = w.Write([]byte(simpleCSVWithHeader))
+			_, err := w.Write([]byte(simpleCSVWithHeader))
+			require.NoError(t, err)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

@@ -46,7 +46,7 @@ func (d *Dovecot) Gather(acc telegraf.Accumulator) error {
 		d.Servers = append(d.Servers, "127.0.0.1:24242")
 	}
 
-	if len(d.Filters) <= 0 {
+	if len(d.Filters) == 0 {
 		d.Filters = append(d.Filters, "")
 	}
 
@@ -114,13 +114,17 @@ func (d *Dovecot) gatherServer(addr string, acc telegraf.Accumulator, qtype stri
 	if strings.HasPrefix(addr, "/") {
 		host = addr
 	} else {
-		host, _, _ = net.SplitHostPort(addr)
+		host, _, err = net.SplitHostPort(addr)
+		if err != nil {
+			return fmt.Errorf("reading address failed for dovecot server %q: %w", addr, err)
+		}
 	}
 
-	return gatherStats(&buf, acc, host, qtype)
+	gatherStats(&buf, acc, host, qtype)
+	return nil
 }
 
-func gatherStats(buf *bytes.Buffer, acc telegraf.Accumulator, host string, qtype string) error {
+func gatherStats(buf *bytes.Buffer, acc telegraf.Accumulator, host string, qtype string) {
 	lines := strings.Split(buf.String(), "\n")
 	head := strings.Split(lines[0], "\t")
 	vals := lines[1:]
@@ -154,8 +158,6 @@ func gatherStats(buf *bytes.Buffer, acc telegraf.Accumulator, host string, qtype
 
 		acc.AddFields("dovecot", fields, tags)
 	}
-
-	return nil
 }
 
 func splitSec(tm string) (sec int64, msec int64) {

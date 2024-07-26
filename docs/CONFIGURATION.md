@@ -352,6 +352,12 @@ The agent table configures Telegraf and the defaults used across all plugins.
   By default, processors are run a second time after aggregators. Changing
   this setting to true will skip the second run of processors.
 
+- **buffer_strategy**:
+  The type of buffer to use for telegraf output plugins. Supported modes are
+  `memory`, the default and original buffer type, and `disk`, an experimental
+  disk-backed buffer which will serialize all metrics to disk as needed to
+  improve data durability and reduce the chance for data loss.
+
 ## Plugins
 
 Telegraf plugins are divided into 4 types: [inputs][], [outputs][],
@@ -694,8 +700,9 @@ the evaluation is aborted, an error is logged, and the expression is reported as
 
 ### Modifiers
 
-Modifier filters remove tags and fields from a metric.  If all fields are
-removed the metric is removed. Tags and fields are modified before a metric is
+Modifier filters remove tags and fields from a metric. If all fields are
+removed the metric is removed and as result not passed through to the following
+processors or any output plugin. Tags and fields are modified before a metric is
 passed to a processor, aggregator, or output plugin. When used with an input
 plugin the filter applies after the input runs.
 

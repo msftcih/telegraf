@@ -4,6 +4,7 @@ package chrony
 import (
 	"bytes"
 	_ "embed"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -282,6 +283,26 @@ func (c *Chrony) gatherServerStats(acc telegraf.Accumulator) error {
 			"nke_hits":             resp.NKEHits,
 			"nke_drops":            resp.NKEDrops,
 		}
+	case *fbchrony.ReplyServerStats4:
+		fields = map[string]interface{}{
+			"ntp_hits":                   resp.NTPHits,
+			"ntp_drops":                  resp.NTPDrops,
+			"ntp_auth_hits":              resp.NTPAuthHits,
+			"ntp_interleaved_hits":       resp.NTPInterleavedHits,
+			"ntp_timestamps":             resp.NTPTimestamps,
+			"ntp_span_seconds":           resp.NTPSpanSeconds,
+			"cmd_hits":                   resp.CMDHits,
+			"cmd_drops":                  resp.CMDDrops,
+			"log_drops":                  resp.LogDrops,
+			"nke_hits":                   resp.NKEHits,
+			"nke_drops":                  resp.NKEDrops,
+			"ntp_daemon_rx_timestamps":   resp.NTPDaemonRxtimestamps,
+			"ntp_daemon_tx_timestamps":   resp.NTPDaemonTxtimestamps,
+			"ntp_kernel_rx_timestamps":   resp.NTPKernelRxtimestamps,
+			"ntp_kernel_tx_timestamps":   resp.NTPKernelTxtimestamps,
+			"ntp_hardware_rx_timestamps": resp.NTPHwRxTimestamps,
+			"ntp_hardware_tx_timestamps": resp.NTPHwTxTimestamps,
+		}
 	default:
 		return fmt.Errorf("got unexpected response type %T while waiting for server statistics", r)
 	}
@@ -289,6 +310,24 @@ func (c *Chrony) gatherServerStats(acc telegraf.Accumulator) error {
 	acc.AddFields("chrony_serverstats", fields, tags)
 
 	return nil
+}
+
+func (c *Chrony) getSourceName(ip net.IP) (string, error) {
+	sourceNameReq := fbchrony.NewNTPSourceNamePacket(ip)
+	sourceNameRaw, err := c.client.Communicate(sourceNameReq)
+	if err != nil {
+		return "", fmt.Errorf("querying name of source %q failed: %w", ip, err)
+	}
+	sourceName, ok := sourceNameRaw.(*fbchrony.ReplyNTPSourceName)
+	if !ok {
+		return "", fmt.Errorf("got unexpected response type %T while waiting for source name", sourceNameRaw)
+	}
+
+	// Cut the string at null termination
+	if termidx := bytes.Index(sourceName.Name[:], []byte{0}); termidx >= 0 {
+		return string(sourceName.Name[:termidx]), nil
+	}
+	return string(sourceName.Name[:]), nil
 }
 
 func (c *Chrony) gatherSources(acc telegraf.Accumulator) error {
@@ -316,22 +355,19 @@ func (c *Chrony) gatherSources(acc telegraf.Accumulator) error {
 		}
 
 		// Trying to resolve the source name
-		sourceNameReq := fbchrony.NewNTPSourceNamePacket(sourceData.IPAddr)
-		sourceNameRaw, err := c.client.Communicate(sourceNameReq)
-		if err != nil {
-			return fmt.Errorf("querying name of source %d failed: %w", idx, err)
-		}
-		sourceName, ok := sourceNameRaw.(*fbchrony.ReplyNTPSourceName)
-		if !ok {
-			return fmt.Errorf("got unexpected response type %T while waiting for source name", sourceNameRaw)
-		}
-
-		// Cut the string at null termination
 		var peer string
-		if termidx := bytes.Index(sourceName.Name[:], []byte{0}); termidx >= 0 {
-			peer = string(sourceName.Name[:termidx])
+
+		if sourceData.Mode == fbchrony.SourceModeRef && sourceData.IPAddr.To4() != nil {
+			// References of local sources (PPS, etc..) are encoded in the bits of the IPv4 address,
+			// instead of the RefId. Extract the correct name for those sources.
+			ipU32 := binary.BigEndian.Uint32(sourceData.IPAddr.To4())
+
+			peer = fbchrony.RefidToString(ipU32)
 		} else {
-			peer = string(sourceName.Name[:])
+			peer, err = c.getSourceName(sourceData.IPAddr)
+			if err != nil {
+				return err
+			}
 		}
 
 		if peer == "" {
@@ -388,22 +424,18 @@ func (c *Chrony) gatherSourceStats(acc telegraf.Accumulator) error {
 		}
 
 		// Trying to resolve the source name
-		sourceNameReq := fbchrony.NewNTPSourceNamePacket(sourceStats.IPAddr)
-		sourceNameRaw, err := c.client.Communicate(sourceNameReq)
-		if err != nil {
-			return fmt.Errorf("querying name of source %d failed: %w", idx, err)
-		}
-		sourceName, ok := sourceNameRaw.(*fbchrony.ReplyNTPSourceName)
-		if !ok {
-			return fmt.Errorf("got unexpected response type %T while waiting for source name", sourceNameRaw)
-		}
-
-		// Cut the string at null termination
 		var peer string
-		if termidx := bytes.Index(sourceName.Name[:], []byte{0}); termidx >= 0 {
-			peer = string(sourceName.Name[:termidx])
+
+		if sourceStats.IPAddr.String() == "::" {
+			// `::` IPs mean a local source directly connected to the server.
+			// For example a PPS source or a local GPS receiver.
+			// Then the name of the source is encoded in its RefID
+			peer = fbchrony.RefidToString(sourceStats.RefID)
 		} else {
-			peer = string(sourceName.Name[:])
+			peer, err = c.getSourceName(sourceStats.IPAddr)
+			if err != nil {
+				return err
+			}
 		}
 
 		if peer == "" {

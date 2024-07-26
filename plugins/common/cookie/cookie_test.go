@@ -87,7 +87,8 @@ func newFakeServer(t *testing.T) fakeServer {
 					w.WriteHeader(http.StatusForbidden)
 					return
 				}
-				_, _ = w.Write([]byte("good test response"))
+				_, err := w.Write([]byte("good test response"))
+				require.NoError(t, err)
 			}
 		})),
 		int32: &c,
@@ -229,7 +230,6 @@ func TestAuthConfig_Start(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			srv := newFakeServer(t)
 			c := &CookieAuthConfig{

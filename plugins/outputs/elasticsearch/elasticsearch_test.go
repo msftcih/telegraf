@@ -2,6 +2,7 @@ package elasticsearch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -295,6 +296,50 @@ func TestTemplateManagementEmptyTemplateIntegration(t *testing.T) {
 
 	err := e.manageTemplate(ctx)
 	require.Error(t, err)
+}
+
+func TestUseOpTypeCreate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	container := launchTestContainer(t)
+	defer container.Terminate()
+
+	urls := []string{
+		fmt.Sprintf("http://%s:%s", container.Address, container.Ports[servicePort]),
+	}
+
+	e := &Elasticsearch{
+		URLs:              urls,
+		IndexName:         "test-%Y.%m.%d",
+		Timeout:           config.Duration(time.Second * 5),
+		EnableGzip:        true,
+		ManageTemplate:    true,
+		TemplateName:      "telegraf",
+		OverwriteTemplate: true,
+		UseOpTypeCreate:   true,
+		Log:               testutil.Logger{},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(e.Timeout))
+	defer cancel()
+
+	metrics := []telegraf.Metric{
+		testutil.TestMetric(1),
+	}
+
+	err := e.Connect()
+	require.NoError(t, err)
+
+	err = e.manageTemplate(ctx)
+	require.NoError(t, err)
+
+	// Verify that we can fail for metric with unhandled NaN/inf/-inf values
+	for _, m := range metrics {
+		err = e.Write([]telegraf.Metric{m})
+		require.NoError(t, err)
+	}
 }
 
 func TestTemplateManagementIntegration(t *testing.T) {
@@ -754,4 +799,52 @@ func TestAuthorizationHeaderWhenBearerTokenIsPresent(t *testing.T) {
 
 	err = e.Write(testutil.MockMetrics())
 	require.NoError(t, err)
+}
+
+func TestStandardIndexSettings(t *testing.T) {
+	e := &Elasticsearch{
+		TemplateName: "test",
+		IndexName:    "telegraf-%Y.%m.%d",
+		Log:          testutil.Logger{},
+	}
+	buf, err := e.createNewTemplate("test")
+	require.NoError(t, err)
+	var jsonData esTemplate
+	err = json.Unmarshal(buf.Bytes(), &jsonData)
+	require.NoError(t, err)
+	index := jsonData.Settings.Index
+	require.Equal(t, "10s", index["refresh_interval"])
+	require.InDelta(t, float64(5000), index["mapping.total_fields.limit"], testutil.DefaultDelta)
+	require.Equal(t, "0-1", index["auto_expand_replicas"])
+	require.Equal(t, "best_compression", index["codec"])
+}
+
+func TestDifferentIndexSettings(t *testing.T) {
+	e := &Elasticsearch{
+		TemplateName: "test",
+		IndexName:    "telegraf-%Y.%m.%d",
+		IndexTemplate: map[string]interface{}{
+			"refresh_interval":           "20s",
+			"mapping.total_fields.limit": 1000,
+			"codec":                      "best_compression",
+		},
+		Log: testutil.Logger{},
+	}
+	buf, err := e.createNewTemplate("test")
+	require.NoError(t, err)
+	var jsonData esTemplate
+	err = json.Unmarshal(buf.Bytes(), &jsonData)
+	require.NoError(t, err)
+	index := jsonData.Settings.Index
+	require.Equal(t, "20s", index["refresh_interval"])
+	require.InDelta(t, float64(1000), index["mapping.total_fields.limit"], testutil.DefaultDelta)
+	require.Equal(t, "best_compression", index["codec"])
+}
+
+type esTemplate struct {
+	Settings esSettings `json:"settings"`
+}
+
+type esSettings struct {
+	Index map[string]interface{} `json:"index"`
 }

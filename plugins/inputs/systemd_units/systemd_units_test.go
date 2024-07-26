@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os/user"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,50 @@ func TestDefaultPattern(t *testing.T) {
 	plugin := &SystemdUnits{}
 	require.NoError(t, plugin.Init())
 	require.Equal(t, "*", plugin.Pattern)
+}
+
+func TestDefaultScope(t *testing.T) {
+	u, err := user.Current()
+	if err != nil {
+		return
+	}
+
+	tests := []struct {
+		name          string
+		scope         string
+		expectedScope string
+		expectedUser  string
+	}{
+		{
+			name:          "default scope",
+			scope:         "",
+			expectedScope: "system",
+			expectedUser:  "",
+		},
+		{
+			name:          "system scope",
+			scope:         "system",
+			expectedScope: "system",
+			expectedUser:  "",
+		},
+		{
+			name:          "user scope",
+			scope:         "user",
+			expectedScope: "user",
+			expectedUser:  u.Username,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plugin := &SystemdUnits{
+				Scope: tt.scope,
+			}
+			require.NoError(t, plugin.Init())
+			require.Equal(t, tt.expectedScope, plugin.scope)
+			require.Equal(t, tt.expectedUser, plugin.user)
+		})
+	}
 }
 
 func TestListFiles(t *testing.T) {
@@ -825,6 +870,7 @@ func BenchmarkAllUnitsIntegration(b *testing.B) {
 	b.Logf("produced %d metrics", acc.NMetrics())
 
 	for n := 0; n < b.N; n++ {
+		//nolint:errcheck // skip check in benchmarking
 		_ = plugin.Gather(acc)
 	}
 }
@@ -842,6 +888,7 @@ func BenchmarkAllLoadedUnitsIntegration(b *testing.B) {
 	b.Logf("produced %d metrics", acc.NMetrics())
 
 	for n := 0; n < b.N; n++ {
+		//nolint:errcheck // skip check in benchmarking
 		_ = plugin.Gather(acc)
 	}
 }
@@ -856,6 +903,7 @@ func (c *fakeClient) fixPropertyTypes() {
 	for unit, u := range c.units {
 		for k, value := range u.properties {
 			if strings.HasPrefix(k, "Memory") {
+				//nolint:errcheck // will cause issues later in tests
 				u.properties[k], _ = internal.ToUint64(value)
 			}
 		}

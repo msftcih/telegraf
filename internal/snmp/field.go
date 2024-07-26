@@ -95,9 +95,20 @@ func (f *Field) Init(tr Translator) error {
 
 // fieldConvert converts from any type according to the conv specification
 func (f *Field) Convert(ent gosnmp.SnmpPDU) (interface{}, error) {
+	// snmptranslate table field value here
+	if f.Translate {
+		if entOid, ok := ent.Value.(string); ok {
+			_, _, oidText, _, err := f.translator.SnmpTranslate(entOid)
+			if err == nil {
+				// If no error translating, the original value for ent.Value should be replaced
+				ent.Value = oidText
+			}
+		}
+	}
+
 	if f.Conversion == "" {
 		// OctetStrings may contain hex data that needs its own conversion
-		if ent.Type == gosnmp.OctetString && !utf8.ValidString(string(ent.Value.([]byte)[:])) {
+		if ent.Type == gosnmp.OctetString && !utf8.Valid(ent.Value.([]byte)[:]) {
 			return hex.EncodeToString(ent.Value.([]byte)), nil
 		}
 		if bs, ok := ent.Value.([]byte); ok {

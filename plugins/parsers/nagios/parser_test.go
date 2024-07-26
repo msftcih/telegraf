@@ -519,8 +519,8 @@ func TestParseThreshold(t *testing.T) {
 
 	for i := range tests {
 		min, max, err := parseThreshold(tests[i].input)
-		require.Equal(t, tests[i].eMin, min)
-		require.Equal(t, tests[i].eMax, max)
+		require.InDelta(t, tests[i].eMin, min, testutil.DefaultDelta)
+		require.InDelta(t, tests[i].eMax, max, testutil.DefaultDelta)
 		require.Equal(t, tests[i].eErr, err)
 	}
 }
@@ -571,6 +571,7 @@ func BenchmarkParsing(b *testing.B) {
 	plugin := &Parser{}
 
 	for n := 0; n < b.N; n++ {
-		_, _ = plugin.Parse([]byte(benchmarkData))
+		//nolint:errcheck // Benchmarking so skip the error check to avoid the unnecessary operations
+		plugin.Parse([]byte(benchmarkData))
 	}
 }

@@ -154,7 +154,14 @@ func (t *Telegraf) reloadLoop() error {
 				if _, err := os.Stat(fConfig); err != nil {
 					log.Printf("W! Cannot watch config %s: %s", fConfig, err)
 				} else {
-					go t.watchLocalConfig(signals, fConfig)
+					go t.watchLocalConfig(ctx, signals, fConfig)
+				}
+			}
+			for _, fConfigDirectory := range t.configDir {
+				if _, err := os.Stat(fConfigDirectory); err != nil {
+					log.Printf("W! Cannot watch config directory %s: %s", fConfigDirectory, err)
+				} else {
+					go t.watchLocalConfig(ctx, signals, fConfigDirectory)
 				}
 			}
 		}
@@ -166,7 +173,7 @@ func (t *Telegraf) reloadLoop() error {
 				}
 			}
 			if len(remoteConfigs) > 0 {
-				go t.watchRemoteConfigs(signals, t.configURLWatchInterval, remoteConfigs)
+				go t.watchRemoteConfigs(ctx, signals, t.configURLWatchInterval, remoteConfigs)
 			}
 		}
 		go func() {
@@ -174,6 +181,12 @@ func (t *Telegraf) reloadLoop() error {
 			case sig := <-signals:
 				if sig == syscall.SIGHUP {
 					log.Println("I! Reloading Telegraf config")
+					// May need to update the list of known config files
+					// if a delete or create occured. That way on the reload
+					// we ensure we watch the correct files.
+					if err := t.getConfigFiles(); err != nil {
+						log.Println("E! Error loading config files: ", err)
+					}
 					<-reload
 					reload <- true
 				}
@@ -196,7 +209,7 @@ func (t *Telegraf) reloadLoop() error {
 	return nil
 }
 
-func (t *Telegraf) watchLocalConfig(signals chan os.Signal, fConfig string) {
+func (t *Telegraf) watchLocalConfig(ctx context.Context, signals chan os.Signal, fConfig string) {
 	var mytomb tomb.Tomb
 	var watcher watch.FileWatcher
 	if t.watchConfig == "poll" {
@@ -206,37 +219,37 @@ func (t *Telegraf) watchLocalConfig(signals chan os.Signal, fConfig string) {
 	}
 	changes, err := watcher.ChangeEvents(&mytomb, 0)
 	if err != nil {
-		log.Printf("E! Error watching config: %s\n", err)
+		log.Printf("E! Error watching config file/directory %q: %s\n", fConfig, err)
 		return
 	}
 	log.Printf("I! Config watcher started for %s\n", fConfig)
 	select {
+	case <-ctx.Done():
+		mytomb.Done()
+		return
 	case <-changes.Modified:
-		log.Println("I! Config file modified")
+		log.Printf("I! Config file/directory %q modified\n", fConfig)
 	case <-changes.Deleted:
 		// deleted can mean moved. wait a bit a check existence
 		<-time.After(time.Second)
 		if _, err := os.Stat(fConfig); err == nil {
-			log.Println("I! Config file overwritten")
+			log.Printf("I! Config file/directory %q overwritten\n", fConfig)
 		} else {
-			log.Println("W! Config file deleted")
-			if err := watcher.BlockUntilExists(&mytomb); err != nil {
-				log.Printf("E! Cannot watch for config: %s\n", err.Error())
-				return
-			}
-			log.Println("I! Config file appeared")
+			log.Printf("W! Config file/directory %q deleted\n", fConfig)
 		}
 	case <-changes.Truncated:
-		log.Println("I! Config file truncated")
+		log.Printf("I! Config file/directory %q truncated\n", fConfig)
+	case <-changes.Created:
+		log.Printf("I! Config directory %q has new file(s)\n", fConfig)
 	case <-mytomb.Dying():
-		log.Println("I! Config watcher ended")
+		log.Printf("I! Config watcher %q ended\n", fConfig)
 		return
 	}
 	mytomb.Done()
 	signals <- syscall.SIGHUP
 }
 
-func (t *Telegraf) watchRemoteConfigs(signals chan os.Signal, interval time.Duration, remoteConfigs []string) {
+func (t *Telegraf) watchRemoteConfigs(ctx context.Context, signals chan os.Signal, interval time.Duration, remoteConfigs []string) {
 	configs := strings.Join(remoteConfigs, ", ")
 	log.Printf("I! Remote config watcher started for: %s\n", configs)
 
@@ -246,6 +259,8 @@ func (t *Telegraf) watchRemoteConfigs(signals chan os.Signal, interval time.Dura
 	lastModified := make(map[string]string, len(remoteConfigs))
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-signals:
 			return
 		case <-ticker.C:
@@ -279,17 +294,28 @@ func (t *Telegraf) loadConfiguration() (*config.Config, error) {
 	// If no other options are specified, load the config file and run.
 	c := config.NewConfig()
 	c.Agent.Quiet = t.quiet
+	c.Agent.ConfigURLRetryAttempts = t.configURLRetryAttempts
 	c.OutputFilters = t.outputFilters
 	c.InputFilters = t.inputFilters
 	c.SecretStoreFilters = t.secretstoreFilters
 
+	if err := t.getConfigFiles(); err != nil {
+		return c, err
+	}
+	if err := c.LoadAll(t.configFiles...); err != nil {
+		return c, err
+	}
+	return c, nil
+}
+
+func (t *Telegraf) getConfigFiles() error {
 	var configFiles []string
 
 	configFiles = append(configFiles, t.config...)
 	for _, fConfigDirectory := range t.configDir {
 		files, err := config.WalkDirectory(fConfigDirectory)
 		if err != nil {
-			return c, err
+			return err
 		}
 		configFiles = append(configFiles, files...)
 	}
@@ -298,17 +324,13 @@ func (t *Telegraf) loadConfiguration() (*config.Config, error) {
 	if len(configFiles) == 0 {
 		defaultFiles, err := config.GetDefaultConfigPath()
 		if err != nil {
-			return nil, fmt.Errorf("unable to load default config paths: %w", err)
+			return fmt.Errorf("unable to load default config paths: %w", err)
 		}
 		configFiles = append(configFiles, defaultFiles...)
 	}
 
-	c.Agent.ConfigURLRetryAttempts = t.configURLRetryAttempts
 	t.configFiles = configFiles
-	if err := c.LoadAll(configFiles...); err != nil {
-		return c, err
-	}
-	return c, nil
+	return nil
 }
 
 func (t *Telegraf) runAgent(ctx context.Context, reloadConfig bool) error {
@@ -336,7 +358,7 @@ func (t *Telegraf) runAgent(ctx context.Context, reloadConfig bool) error {
 	}
 
 	// Setup logging as configured.
-	logConfig := logger.Config{
+	logConfig := &logger.Config{
 		Debug:               c.Agent.Debug || t.debug,
 		Quiet:               c.Agent.Quiet || t.quiet,
 		LogTarget:           c.Agent.LogTarget,

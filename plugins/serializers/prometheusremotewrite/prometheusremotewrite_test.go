@@ -35,7 +35,8 @@ func BenchmarkRemoteWrite(b *testing.B) {
 	}
 	s := &Serializer{}
 	for n := 0; n < b.N; n++ {
-		_, _ = s.SerializeBatch(batch)
+		//nolint:errcheck // Benchmarking so skip the error check to avoid the unnecessary operations
+		s.SerializeBatch(batch)
 	}
 }
 
@@ -706,7 +707,7 @@ func prompbToText(data []byte) ([]byte, error) {
 	}
 	samples := protoToSamples(&req)
 	for _, sample := range samples {
-		buf.Write([]byte(fmt.Sprintf("%s %s\n", sample.Metric.String(), sample.Value.String())))
+		buf.WriteString(fmt.Sprintf("%s %s\n", sample.Metric.String(), sample.Value.String()))
 	}
 
 	return buf.Bytes(), nil

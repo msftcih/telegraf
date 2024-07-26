@@ -3,7 +3,6 @@ package agent
 import (
 	"bytes"
 	"errors"
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/logger"
+	"github.com/influxdata/telegraf/testutil"
 )
 
 func TestAddFields(t *testing.T) {
@@ -32,7 +32,7 @@ func TestAddFields(t *testing.T) {
 	actual, ok := testm.GetField("usage")
 
 	require.True(t, ok)
-	require.Equal(t, float64(99), actual)
+	require.InDelta(t, float64(99), actual, testutil.DefaultDelta)
 
 	actual, ok = testm.GetTag("foo")
 	require.True(t, ok)
@@ -48,8 +48,8 @@ func TestAddFields(t *testing.T) {
 
 func TestAccAddError(t *testing.T) {
 	errBuf := bytes.NewBuffer(nil)
-	log.SetOutput(errBuf)
-	defer log.SetOutput(os.Stderr)
+	logger.RedirectLogging(errBuf)
+	defer logger.RedirectLogging(os.Stderr)
 
 	metrics := make(chan telegraf.Metric, 10)
 	defer close(metrics)
@@ -156,5 +156,5 @@ func (tm *TestMetricMaker) MakeMetric(metric telegraf.Metric) telegraf.Metric {
 }
 
 func (tm *TestMetricMaker) Log() telegraf.Logger {
-	return logger.NewLogger("TestPlugin", "test", "")
+	return logger.New("TestPlugin", "test", "")
 }

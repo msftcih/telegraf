@@ -28,7 +28,8 @@ func TestDLB_Init(t *testing.T) {
 		}
 		require.Equal(t, "", dlb.SocketPath)
 
-		_ = dlb.Init()
+		//nolint:errcheck // we are just testing that socket path gets set to default, not that default is valid
+		dlb.Init()
 
 		require.Equal(t, defaultSocketPath, dlb.SocketPath)
 	})
@@ -421,7 +422,7 @@ func TestDLB_gatherSecondDeviceIndex(t *testing.T) {
 		mockConn.On("Close").Return(nil).Once()
 
 		_, err := dlb.gatherSecondDeviceIndex(0, dlb.EventdevCommands[0])
-		require.Equal(t, nil, dlb.connection)
+		require.Nil(t, dlb.connection)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to parse json")
 		dlb.SocketPath = pathToSocket
@@ -941,11 +942,12 @@ func simulateSocketResponseForGather(socket net.Listener, t *testing.T) {
 		Pid          int    `json:"pid"`
 		MaxOutputLen uint32 `json:"max_output_len"`
 	}
-	initMsg, _ := json.Marshal(initMessage{
+	initMsg, err := json.Marshal(initMessage{
 		Version:      "",
 		Pid:          1,
 		MaxOutputLen: 1024,
 	})
+	require.NoError(t, err)
 	_, err = conn.Write(initMsg)
 	require.NoError(t, err)
 

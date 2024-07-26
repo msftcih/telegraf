@@ -164,9 +164,13 @@ func (h *handler) handleSubscribeResponseUpdate(acc telegraf.Accumulator, respon
 	prefix := newInfoFromPath(response.Update.Prefix)
 
 	// Add info to the tags
-	headerTags["source"], _, _ = net.SplitHostPort(h.address)
+	var err error
+	headerTags["source"], _, err = net.SplitHostPort(h.address)
+	if err != nil {
+		h.log.Errorf("unable to parse address %s: %v", h.address, err)
+	}
 	if !prefix.empty() {
-		headerTags["path"] = prefix.String()
+		headerTags["path"] = prefix.FullPath()
 	}
 
 	// Process and remove tag-updates from the response first so we can
@@ -270,15 +274,11 @@ func (h *handler) handleSubscribeResponseUpdate(acc telegraf.Accumulator, respon
 			// shorter than the full path to avoid an empty key, then strip the
 			// common part of the field is prefixed with the alias path. Note
 			// the origins can match or be empty and be considered equal.
-			if aliasInfo.isSubPathOf(field.path) && len(aliasInfo.segments) < len(field.path.segments) {
-				relative := field.path.segments[len(aliasInfo.segments):len(field.path.segments)]
-				key = strings.Join(relative, "/")
+			if relative := aliasInfo.relative(field.path, true); relative != "" {
+				key = relative
 			} else {
-				// Otherwise use the last path element as the field key if it
-				// exists.
-				if len(field.path.segments) > 0 {
-					key = field.path.segments[len(field.path.segments)-1]
-				}
+				// Otherwise use the last path element as the field key
+				key = field.path.Base()
 			}
 			key = strings.ReplaceAll(key, "-", "_")
 		}
@@ -328,12 +328,11 @@ func guessPrefixFromUpdate(fields []updateField) string {
 		return ""
 	}
 	if len(fields) == 1 {
-		dir, _ := fields[0].path.split()
-		return dir
+		return fields[0].path.Dir()
 	}
 	commonPath := &pathInfo{
 		origin:   fields[0].path.origin,
-		segments: append([]string{}, fields[0].path.segments...),
+		segments: append([]segment{}, fields[0].path.segments...),
 	}
 	for _, f := range fields[1:] {
 		commonPath.keepCommonPart(f.path)

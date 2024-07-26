@@ -5,6 +5,7 @@ linters:
     - asciicheck
     - bidichk
     - bodyclose
+    - copyloopvar
     - depguard
     - dogsled
     - errcheck
@@ -21,6 +22,7 @@ linters:
     - interfacebloat
     - lll
     - makezero
+    - mirror
     - nakedret
     - nilerr
     - nolintlint
@@ -71,6 +73,7 @@ linters-settings:
       - "(*hash/maphash.Hash).Write"
       - "(*hash/maphash.Hash).WriteByte"
       - "(*hash/maphash.Hash).WriteString"
+      - "(*github.com/influxdata/telegraf/plugins/outputs/postgresql/sqltemplate.Template).UnmarshalText"
     check-blank: true
   gocritic:
     # Disable all checks.
@@ -87,6 +90,7 @@ linters-settings:
       - badLock
       - badRegexp
       - badSorting
+      - badSyncOnceFunc
       - builtinShadowDecl
       - caseOrder
       - codegenComment
@@ -108,6 +112,7 @@ linters-settings:
       - nilValReturn
       - offBy1
       - regexpPattern
+      - sloppyLen
       - sloppyReassign
       - sloppyTypeAssert
       - sortSlice
@@ -289,20 +294,25 @@ linters-settings:
     # Enable checkers by name
     # (in addition to default
     #   blank-import, bool-compare, compares, empty, error-is-as, error-nil, expected-actual, go-require, float-compare,
-    #   len, nil-compare, require-error, suite-dont-use-pkg, suite-extra-assert-call, useless-assert
+    #   len, negative-positive, nil-compare, require-error, suite-dont-use-pkg, suite-extra-assert-call, useless-assert
     # ).
     enable:
+      - blank-import
       - bool-compare
       - compares
       - empty
       - error-is-as
       - error-nil
       - expected-actual
+      - float-compare
       - len
+      - negative-positive
+      - nil-compare
       - require-error
       - suite-dont-use-pkg
       - suite-extra-assert-call
       - suite-thelper
+      - useless-assert
 
 run:
   # Timeout for analysis, e.g. 30s, 5m.
@@ -326,9 +336,6 @@ issues:
     - package comment should be of the form "(.+)...
     # EXC0015 revive: Annoying issue about not having a comment. The rare codebase has such comments
     - should have a package comment
-    # nolintlint: directive `//nolint:errcheck` is unused for linter "errcheck"
-    # temporary while these are being fixed
-    - directive `//nolint:errcheck //.*` is unused for linter "errcheck"
 
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
@@ -339,9 +346,9 @@ issues:
     - path: cmd/telegraf/(main|printer|cmd_plugins).go
       text: "Error return value of `outputBuffer.Write` is not checked" #errcheck
 
-    - path: plugins/*
+    - path: plugins/inputs/win_perf_counters/pdh.go
       linters:
-        - errcheck # temporary as this linter is gradually being applied across the codebase
+        - errcheck
 
     - path: _test\.go
       text: "Potential hardcoded credentials" #gosec:G101
@@ -388,7 +395,19 @@ issues:
 # output configuration options
 output:
   # The formats used to render issues.
-  # Format: `colored-line-number`, `line-number`, `json`, `colored-tab`, `tab`, `checkstyle`, `code-climate`, `junit-xml`, `github-actions`, `teamcity`
+  # Formats:
+  # - `colored-line-number`
+  # - `line-number`
+  # - `json`
+  # - `colored-tab`
+  # - `tab`
+  # - `html`
+  # - `checkstyle`
+  # - `code-climate`
+  # - `junit-xml`
+  # - `github-actions`
+  # - `teamcity`
+  # - `sarif`
   # Output path can be either `stdout`, `stderr` or path to the file to write to.
   #
   # For the CLI flag (`--out-format`), multiple formats can be specified by separating them by comma.

@@ -318,7 +318,8 @@ func TestGatherUDPCertIntegration(t *testing.T) {
 	defer listener.Close()
 
 	go func() {
-		_, _ = listener.Accept()
+		_, err := listener.Accept()
+		require.NoError(t, err)
 	}()
 
 	m := &X509Cert{
@@ -451,8 +452,7 @@ func TestServerName(t *testing.T) {
 		{name: "errors", fromCfg: "otherex.com", fromTLS: "example.com", url: "https://other.example.com", err: true},
 	}
 
-	for _, elt := range tests {
-		test := elt
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			sc := &X509Cert{
 				Sources:      []string{test.url},

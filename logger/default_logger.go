@@ -5,91 +5,63 @@ import (
 	"io"
 	"log"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 
+	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal/rotate"
-	"github.com/influxdata/wlog"
 )
 
-var prefixRegex = regexp.MustCompile("^[DIWE]!")
+const (
+	LogTargetFile   = "file"
+	LogTargetStderr = "stderr"
+)
 
 type defaultLogger struct {
-	writer         io.Writer
-	internalWriter io.Writer
-	timezone       *time.Location
+	logger *log.Logger
 }
 
-func (t *defaultLogger) Write(b []byte) (n int, err error) {
-	var line []byte
-	timeToPrint := time.Now().In(t.timezone)
+func (l *defaultLogger) Close() error {
+	writer := l.logger.Writer()
 
-	if !prefixRegex.Match(b) {
-		line = append([]byte(timeToPrint.Format(time.RFC3339)+" I! "), b...)
-	} else {
-		line = append([]byte(timeToPrint.Format(time.RFC3339)+" "), b...)
-	}
-
-	return t.writer.Write(line)
-}
-
-func (t *defaultLogger) Close() error {
-	// avoid closing stderr
-	if t.internalWriter == os.Stderr {
+	// Close the writer if possible and avoid closing stderr
+	if writer == os.Stderr {
 		return nil
 	}
-
-	closer, isCloser := t.internalWriter.(io.Closer)
-	if !isCloser {
-		return errors.New("the underlying writer cannot be closed")
+	if closer, ok := writer.(io.Closer); ok {
+		return closer.Close()
 	}
-	return closer.Close()
+
+	return errors.New("the underlying writer cannot be closed")
 }
 
-// newTelegrafWriter returns a logging-wrapped writer.
-func newTelegrafWriter(w io.Writer, c Config) (*defaultLogger, error) {
-	timezoneName := c.LogWithTimezone
-	if strings.EqualFold(timezoneName, "local") {
-		timezoneName = "Local"
-	}
-
-	tz, err := time.LoadLocation(timezoneName)
-	if err != nil {
-		return nil, errors.New("error while setting logging timezone: " + err.Error())
-	}
-
-	return &defaultLogger{
-		writer:         wlog.NewWriter(w),
-		internalWriter: w,
-		timezone:       tz,
-	}, nil
+func (l *defaultLogger) SetOutput(w io.Writer) {
+	l.logger.SetOutput(w)
 }
 
-func createStderrLogger(cfg Config) (io.WriteCloser, error) {
-	return newTelegrafWriter(os.Stderr, cfg)
+func (l *defaultLogger) Print(level telegraf.LogLevel, ts time.Time, prefix string, args ...interface{}) {
+	msg := append([]interface{}{ts.Format(time.RFC3339), " ", level.Indicator(), " ", prefix}, args...)
+	l.logger.Print(msg...)
 }
 
-func createFileLogger(cfg Config) (io.WriteCloser, error) {
-	if cfg.Logfile == "" {
-		return createStderrLogger(cfg)
+func createDefaultLogger(cfg *Config) (sink, error) {
+	var writer io.Writer = os.Stderr
+	if cfg.LogTarget == "file" && cfg.Logfile != "" {
+		w, err := rotate.NewFileWriter(
+			cfg.Logfile,
+			cfg.RotationInterval,
+			cfg.RotationMaxSize,
+			cfg.RotationMaxArchives,
+		)
+		if err != nil {
+			return nil, err
+		}
+		writer = w
 	}
 
-	writer, err := rotate.NewFileWriter(
-		cfg.Logfile,
-		cfg.RotationInterval,
-		cfg.RotationMaxSize,
-		cfg.RotationMaxArchives,
-	)
-	if err != nil {
-		log.Printf("E! Unable to open %s (%s), using stderr", cfg.Logfile, err)
-		return createStderrLogger(cfg)
-	}
-
-	return newTelegrafWriter(writer, cfg)
+	return &defaultLogger{logger: log.New(writer, "", 0)}, nil
 }
 
 func init() {
-	registerLogger("stderr", createStderrLogger)
-	registerLogger("file", createFileLogger)
+	add("stderr", createDefaultLogger)
+	add("file", createDefaultLogger)
 }
