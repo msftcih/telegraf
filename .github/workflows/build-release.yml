@@ -40,7 +40,7 @@ jobs:
         push: false
         tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/telegraf:master-${{ env.NOW }}
         file: scripts/bullseye.docker
-        outputs: type=oci,dest=/tmp/telegraf-image.tar
+        outputs: type=docker,dest=/tmp/telegraf-image.tar
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -63,9 +63,9 @@ jobs:
           name: telegraf-image
           path: /tmp
       
-      - name: Import Image
+      - name: Load telegraf image
         run: |
-          docker import --change 'CMD ["telegraf"]' /tmp/telegraf-image.tar ${{ secrets.REGISTRY_LOGIN_SERVER }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
+          docker load --input /tmp/telegraf-image.tar
           docker image ls -a
 
       - name: 'ACR Login'
@@ -94,9 +94,9 @@ jobs:
           name: telegraf-image
           path: /tmp
       
-      - name: Import Image
+      - name: Load telegraf image
         run: |
-          docker import --change 'CMD ["telegraf"]' /tmp/telegraf-image.tar ${{ secrets.REGISTRY_LOGIN_SERVER_PROD }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
+          docker load --input /tmp/telegraf-image.tar
           docker image ls -a
 
       - name: 'ACR Login'
