@@ -33,5 +33,5 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         push: true
-        tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/master:$NOW
+        tags: ${{ secrets.REGISTRY_LOGIN_SERVER }}/telegraf:master-${{ env.NOW }}
         file: scripts/bullseye.docker
