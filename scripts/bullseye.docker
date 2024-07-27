@@ -27,5 +27,6 @@ RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
 EXPOSE 8125/udp 8092/udp 8094
 
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["telegraf"]
