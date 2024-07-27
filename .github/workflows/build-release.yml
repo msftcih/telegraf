@@ -43,7 +43,7 @@ jobs:
         outputs: type=oci,dest=/tmp/telegraf-image.tar
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: telegraf-image
         path: /tmp/telegraf-image.tar
@@ -58,18 +58,18 @@ jobs:
 
     steps:
       - name: Download artifacts (Docker images) from previous workflows
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: telegraf-image
           path: /tmp
       
       - name: Import Image
         run: |
-          docker import /tmp/telegraf-image.tar ${{ secrets.REGISTRY_LOGIN_SERVER }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
+          docker import --change 'CMD ["telegraf"]' /tmp/telegraf-image.tar ${{ secrets.REGISTRY_LOGIN_SERVER }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
           docker image ls -a
 
       - name: 'ACR Login'
-        uses: azure/docker-login@v1
+        uses: azure/docker-login@v2
         with:
           login-server: ${{ secrets.REGISTRY_LOGIN_SERVER }}
           username: ${{ secrets.REGISTRY_USERNAME }}
@@ -89,14 +89,14 @@ jobs:
 
     steps:
       - name: Download artifacts (Docker images) from previous workflows
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: telegraf-image
           path: /tmp
       
       - name: Import Image
         run: |
-          docker import /tmp/telegraf-image.tar ${{ secrets.REGISTRY_LOGIN_SERVER_PROD }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
+          docker import --change 'CMD ["telegraf"]' /tmp/telegraf-image.tar ${{ secrets.REGISTRY_LOGIN_SERVER_PROD }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
           docker image ls -a
 
       - name: 'ACR Login'
