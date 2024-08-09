@@ -40,6 +40,8 @@ type OutputConfig struct {
 
 	BufferStrategy  string
 	BufferDirectory string
+
+	LogLevel string
 }
 
 // RunningOutput contains the output configuration
@@ -84,6 +86,9 @@ func NewRunningOutput(
 	logger.RegisterErrorCallback(func() {
 		writeErrorsRegister.Incr(1)
 	})
+	if err := logger.SetLogLevel(config.LogLevel); err != nil {
+		logger.Error(err)
+	}
 	SetLoggerOnPlugin(output, logger)
 
 	if config.MetricBufferLimit > 0 {
@@ -347,7 +352,11 @@ func (r *RunningOutput) writeMetrics(metrics []telegraf.Metric) error {
 
 func (r *RunningOutput) LogBufferStatus() {
 	nBuffer := r.buffer.Len()
-	r.log.Debugf("Buffer fullness: %d / %d metrics", nBuffer, r.MetricBufferLimit)
+	if r.Config.BufferStrategy == "disk" {
+		r.log.Debugf("Buffer fullness: %d metrics", nBuffer)
+	} else {
+		r.log.Debugf("Buffer fullness: %d / %d metrics", nBuffer, r.MetricBufferLimit)
+	}
 }
 
 func (r *RunningOutput) Log() telegraf.Logger {
