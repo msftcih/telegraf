@@ -1,0 +1,57 @@
+{
+	"$schema": "https://ev2schema.azure.net/schemas/2020-01-01/rolloutParameters.json",
+	"contentVersion": "1.0.0.0",
+	"shellExtensions": [
+		{
+			"name": "ShellTelegrafImageDeploy",
+			"type": "ShellDeploy",
+			"properties": {
+				"maxExecutionTime": "PT45M",
+				"skipDeleteAfterExecution": false
+			},
+			"package": {
+				"reference": {
+					"path": "drop_package_ev2_service_artifacts/app-deploy-scripts.tar.gz"
+				}
+			},
+			"launch": {
+				"command": [
+					"/bin/bash",
+					"-c",
+					"chmod +x deploy-acr-images.sh && deploy-acr-images.sh"
+				],
+				"environmentVariables": [
+					{
+						"name": "ENV",
+						"value": "__DEPLOYMENT_ENVIRONMENT__"
+					},
+					{
+						"name": "DESTINATION_ACR",
+						"value": "__AZURE_CONTAINER_REGISTRY__"
+					},
+					{
+						"name": "TARBALL_IMAGE_FILE_SAS",
+						"reference": {
+							"path": "drop_build_telegraf_image/telegraf-image.tar"
+						},
+						"asSecureValue": "true"
+					},
+					{
+						"name": "IMAGE_NAME",
+						"value": "telegraf"
+					},
+					{
+						"name": "IMAGE_TAG_NAME",
+						"value": "__BUILD_VERSION__"
+					}
+				],
+				"identity": {
+					"type": "userAssigned",
+					"userAssignedIdentities": [
+						"__EV2_OPS_UAMI__"
+					]
+				}
+			}
+		}
+	]
+}
