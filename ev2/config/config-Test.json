@@ -1,0 +1,41 @@
+{
+	"settings": {
+		"tenantId": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+		"subscription": {
+			"id": "0ff26203-bd93-4ce9-81a8-90f4e4982da5",
+			"displayName": "MCIO-CIH-Cascade-Test",
+			"key": "cih-atlas"
+		},
+		"deployment": {
+			"environment": "Test",
+			"workload": "DevTest",
+			"regions":  [ "westus" ]
+		},
+		"resourceGroup": {
+			"aks": "athena-dev-xd-rg",
+			"leaseProviderStorageAccount": "athena-dev-xd-aks-rg",
+			"location": "westus"
+		},
+		"aks": {
+			"clusterName": "athena-dev-xd-aks",
+			"resourceGroup": "athena-dev-xd-rg",
+			"kubernetesVersion": "1.29.4",
+			"workloadIdentity": {
+				"clientId": "",
+				"objectId": "",
+				"name": ""
+			}
+		},
+		"blobStorage": {
+			"accountName": "sdltteststorage",
+			"resourceGroup": "athena-dev-xd-aks-rg"
+		},
+		"keyVault": "athena-pipeline-dev-kv",
+		"acr": "athenapipelineacr",
+		"ev2": {
+			"containerImageName": "adm-mariner-20-l",
+			"containerImageVersion": "v8",
+			"opsUami": "/subscriptions/0ff26203-bd93-4ce9-81a8-90f4e4982da5/resourceGroups/global-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/ev2-sdlt-ops"
+		}
+	}
+}
