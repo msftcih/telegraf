@@ -1,0 +1,52 @@
+{
+	"$schema": "https://ev2schema.azure.net/schemas/2020-04-01/RegionAgnosticServiceModel.json",
+	"contentVersion": "1.0.0",
+	"serviceMetadata": {
+	  "serviceIdentifier": "668c23b3-bd03-400a-b044-916a23c37797",
+	  "serviceGroup": "Microsoft.CIH.Atlas.SDLT",
+	  "environment": "$config(deployment.environment)",
+	  "displayName": "Software Defined Lease Telemetry (SDLT)",
+	  "tenantId": "$config(tenantId)",
+	  "serviceSpecificationPath": "serviceSpecification.json",
+	  "serviceGroupSpecificationPath": "serviceGroupSpecification.json"
+	},
+	"subscriptionProvisioning": {
+	  "rolloutParametersPath": "parameters/subscriptionProvisioningParameters.json",
+	  "scopeTags": [
+		  {
+			  "name": "Global"
+		  }
+	  ]
+	},
+	"serviceResourceGroupDefinitions": [
+	  {
+		"name": "SDLTResourceGroupDefinition",
+		"azureResourceGroupName": "$config(resourceGroup.aks)",
+		"subscriptionKey": "$config(subscription.key)",
+		"serviceResourceDefinitions": [
+		  {
+			  "name": "TelegrafImageDeployServiceDefinition",
+			  "composedOf": {
+				"extension": {
+				  "rolloutParametersPath": "parameters/RolloutParameters.json",
+				  "shell": [
+					  {
+						  "type": "ShellDeploy",
+						  "properties": {
+							  "imageName": "adm-mariner-20-l",
+							  "imageVersion": "v8"
+						  }
+					  }
+				  ]
+				}
+			  },
+			  "scopeTags": [
+				  {
+					  "name": "Global"
+				  }
+			  ]
+		  }
+		]
+	  }
+	]
+}
