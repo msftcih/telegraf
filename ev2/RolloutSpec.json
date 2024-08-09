@@ -1,0 +1,34 @@
+{
+	"$schema": "https://ev2schema.azure.net/schemas/2020-04-01/RegionAgnosticRolloutSpecification.json",
+	"contentVersion": "1.0.0",
+	"rolloutMetadata": {
+	  "serviceModelPath": "ServiceModel.json",
+	  "scopeBindingsPath": "scopeBindings.json",
+	  "name": "SDLT.AKS",
+	  "rolloutType": "Major",
+	  "configuration": {
+		  "serviceGroupScope": {
+			  "specPath": "config/config-$rolloutInfra().json"
+		  }
+	  },
+	  "buildSource": {
+		"parameters": {
+		  "versionFile": "telegraf-version.txt"
+		}
+	  },
+	  "notification": {
+		"email": {
+		  "to": "ifeolowosusi@microsoft.com",
+		  "cc": "v-moizm@microsoft.com"
+		}
+	  }
+	},
+	"orchestratedSteps": [
+	  {
+		  "name": "PushTelegrafDockerImageToAcr",
+		  "targetType": "serviceResourceDefinition",
+		  "targetName": "TelegrafImageDeployServiceDefinition",
+		  "actions": [ "shell/ShellTelegrafImageDeploy" ]
+	  }
+	]
+}
