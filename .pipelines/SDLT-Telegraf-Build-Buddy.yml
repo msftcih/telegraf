@@ -1,0 +1,179 @@
+#################################################################################
+#                              OneBranch Pipelines                              #
+# This pipeline was created by EasyStart from a sample located at:              #
+#   https://aka.ms/obpipelines/easystart/samples                                #
+# Documentation:  https://aka.ms/obpipelines                                    #
+# Yaml Schema:    https://aka.ms/obpipelines/yaml/schema                        #
+# Retail Tasks:   https://aka.ms/obpipelines/tasks                              #
+# Support:        https://aka.ms/onebranchsup                                   #
+#################################################################################
+
+trigger: none # https://aka.ms/obpipelines/triggers
+
+parameters: # parameters are shown up in ADO UI in a build queue time
+- name: 'debug'
+  displayName: 'Enable debug output'
+  type: boolean
+  default: true
+- name: 'msftTenantEv2ServiceConnectionId'
+  displayName: 'MSFT/Corp Tenant Ev2 Service Connection Id'
+  type: string
+  default: 'Corp-COI-CIH-SDLT-Ev2-Test'
+- name: 'forceEv2ArtifactsRegistration'
+  displayName: 'Force registration of Ev2 Service Artifacts?'
+  type: boolean
+  default: true
+
+variables:
+  CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)] # needed for onebranch.pipeline.version task https://aka.ms/obpipelines/versioning
+  system.debug: ${{ parameters.debug }}
+  LinuxContainerImage: 'mcr.microsoft.com/onebranch/cbl-mariner/build:2.0' # for Linux jobs
+
+resources:
+  repositories: 
+    - repository: templates
+      type: git
+      name: OneBranch.Pipelines/GovernedTemplates
+      ref: refs/heads/main
+
+extends:
+  template: v2/OneBranch.Official.CrossPlat.yml@templates # https://aka.ms/obpipelines/templates
+  parameters:
+    featureFlags:
+      ensureArtifactsDirExists: true
+    globalSdl:
+      asyncSdl:
+        enabled: true
+        tsaOptionsFile: .pipelines/.config/tsaoptions.json
+      tsa:
+        enabled: false
+      binskim:
+        break: true
+      policheck:
+        break: true
+    ev2ManagedSdpRolloutConfig:
+      rolloutType: normal
+      overrideManagedValidationDuration: true
+      managedValidationOverrideDurationInHours: 0
+      icmIncidentId: 0
+
+    stages:
+
+    - stage: Build
+      jobs:
+      - job: Telegraf_Image
+        pool:
+          type: docker
+          os: linux
+        
+        variables:
+          ob_outputDirectory: '$(Build.SourcesDirectory)/out'
+          ob_git_checkout: true
+          OB_build_container: true
+          OB_docker_artifacts_copy_hidden: true
+
+        steps:
+          - task: onebranch.pipeline.containercontrol@1
+            displayName: "Login to OneBranch isolated ACR"
+            inputs:
+              command: login
+              acr_name: cdpxace8d53f889a488c9cc9d31fb4bbc84a00
+
+          - task: onebranch.pipeline.imagebuildinfo@1
+            displayName: "🔒 Building Telegraf Docker Image"
+            inputs:
+              repositoryName: 'telegraf'
+              dockerFileRelPath: scripts/bullseye.docker
+              dockerFileContextPath: ./
+              saveImageToPath: 'telegraf-image.tar'
+              enable_isolated_acr_push: true
+              enable_service_tree_acr_path: false
+              enable_network: true
+              buildkit: 1
+              arguments: >
+                --build-arg ACR_NAME=athenapipelineacr
+              build_tag: $(Build.BuildNumber)
+
+    - stage: Package_Ev2
+      dependsOn: Build
+      jobs:
+      - job: Service_Artifacts
+        pool:
+          type: 'linux'
+
+        variables:
+          ob_outputDirectory: '$(Build.SourcesDirectory)/out'
+
+        steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download telegraf docker image artifacts'
+            inputs:
+              buildType: 'current'
+              artifactName: 'drop_build_telegraf_image'
+              targetPath: '$(Build.SourcesDirectory)/out'
+
+          - task: ArchiveFiles@2
+            displayName: 'Package EV2 Shell Extension Script'
+            inputs:
+              rootFolderOrFile: '$(Build.SourcesDirectory)/ev2/scripts'
+              includeRootFolder: false
+              archiveType: 'tar'
+              tarCompression: 'gz'
+              archiveFile: '$(Build.SourcesDirectory)/out/app-deploy-scripts.tar.gz'
+              replaceExistingArchive: true
+              verbose: true
+          
+          - task: PowerShell@2
+            displayName: 'Set Ev2 service artifacts version'
+            inputs:
+              targetType: 'inline'
+              script: |
+                $(Build.BuildNumber) | Out-File "$(Build.SourcesDirectory)\ev2\telegraf-version.txt" -Encoding ascii
+          
+          - task: CopyFiles@2
+            displayName: 'Copy EV2 service artifacts'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)/ev2'
+              Contents: |
+                **
+                !App
+                !scripts
+              TargetFolder: '$(Build.SourcesDirectory)/out'
+
+    - stage: Test_ACR_Push
+      dependsOn: Package_Ev2
+      variables:
+        ob_release_environment: Test
+      
+      jobs:
+      - job: Release_Telegraf_Docker_Image
+        pool:
+          type: release
+
+        steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download EV2 service artifacts'
+            inputs:
+              buildType: 'current'
+              artifactName: 'drop_package_ev2_service_artifacts'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download telegraf docker image artifacts'
+            inputs:
+              buildType: 'current'
+              artifactName: 'drop_build_telegraf_image'
+
+          - task: vsrm-ev2.vss-services-ev2.adm-release-task.ExpressV2Internal@1
+            displayName: '🚀 Express V2 Deployment'
+            inputs:
+              EndpointProviderType: Ev2Endpoint
+              ConnectedServiceName: ${{ parameters.msftTenantEv2ServiceConnectionId }}
+              ForceRegistration: ${{ parameters.forceEv2ArtifactsRegistration }}
+              SkipRegistrationIfExists: true
+              ValidateOnly: false
+              EnableStrictValidation: false
+              UseServerMonitorTask: true
+              ServiceRootLocation: 'LinkedArtifact'
+              RolloutSpecType: 'RSPath'
+              RolloutSpecPath: '$(Pipeline.Workspace)/build_artifacts/drop_package_ev2_service_artifacts/RolloutSpec.json'
+              ServiceRootPath: '$(Pipeline.Workspace)/build_artifacts/drop_package_ev2_service_artifacts'

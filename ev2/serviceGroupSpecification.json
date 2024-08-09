@@ -1,0 +1,6 @@
+{
+	"name": "Microsoft.CIH.Atlas.SDLT.Telegraf",
+	"description": "CIH Atlas SDLT Group",
+	"ownerGroupContactEmail": "cihdev@microsoft.com",
+	"contentVersion": "1.0.0.0"
+}
