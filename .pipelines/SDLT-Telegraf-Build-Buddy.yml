@@ -83,7 +83,7 @@ extends:
             displayName: "🔒 Building Telegraf Docker Image"
             inputs:
               repositoryName: 'telegraf'
-              dockerFileRelPath: scripts/bullseye.docker
+              dockerFileRelPath: scripts/mariner.docker
               dockerFileContextPath: ./
               saveImageToPath: 'telegraf-image.tar'
               enable_isolated_acr_push: true
