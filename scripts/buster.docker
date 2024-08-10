@@ -1,8 +1,12 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.20.5-1-buster AS builder
 =======
 FROM golang:1.20.5-buster as builder
 >>>>>>> cd0fb510c (Updates to use Bullseye and http authentication)
+=======
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.20.5-1-buster AS builder
+>>>>>>> 5491d1166 (Removed external registry dependencies from docker files)
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
