@@ -1,4 +1,4 @@
-FROM golang:1.20.5-buster as builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.20.5-1-buster AS builder
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
