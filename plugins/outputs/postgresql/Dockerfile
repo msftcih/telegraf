@@ -11,7 +11,7 @@ ARG POSTGRES_TAG=latest
 ARG PGUINT_REPO
 ARG PGUINT_RELEASE
 
-FROM postgres:${POSTGRES_TAG}
+FROM mcr.microsoft.com/azurelinux/base/postgres:${POSTGRES_TAG}
 
 RUN apt-get update && apt-get install -y build-essential curl postgresql-server-dev-${PG_MAJOR}=${PG_VERSION}
 
