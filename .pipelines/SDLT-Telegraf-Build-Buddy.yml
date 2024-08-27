@@ -37,18 +37,32 @@ resources:
       ref: refs/heads/main
 
 extends:
-  template: v2/OneBranch.Official.CrossPlat.yml@templates # https://aka.ms/obpipelines/templates
+  template: v2/OneBranch.NonOfficial.CrossPlat.yml@templates # https://aka.ms/obpipelines/templates
   parameters:
     featureFlags:
       ensureArtifactsDirExists: true
+    cloudvault: # https://aka.ms/obpipelines/cloudvault
+      enabled: false # set to true to enable cloudvault
+      runmode: stage # linux can run CloudVault upload as a separate stage
+      dependsOn: 
+      - build
+      - package_ev2
+      artifacts:
+      # - drop_build_restore
+      # - drop_docker_images
     globalSdl:
-      asyncSdl:
-        enabled: true
-        tsaOptionsFile: .pipelines/.config/tsaoptions.json
-      tsa:
-        enabled: false
+      enabled: false
+      enableSDL: false
+      enableTsa: false
+      # asyncSdl:
+      #   enabled: true
+      #   tsaOptionsFile: .pipelines/.config/tsaoptions.json
+      # tsa:
+      #   enabled: false
       binskim:
         break: true
+      bandit:
+        enabled: true
       policheck:
         break: true
     ev2ManagedSdpRolloutConfig:
@@ -59,7 +73,7 @@ extends:
 
     stages:
 
-    - stage: Build
+    - stage: build
       jobs:
       - job: Telegraf_Image
         pool:
@@ -94,8 +108,8 @@ extends:
                 --build-arg ACR_NAME=athenapipelineacr
               build_tag: $(Build.BuildNumber)
 
-    - stage: Package_Ev2
-      dependsOn: Build
+    - stage: package_ev2
+      dependsOn: build
       jobs:
       - job: Service_Artifacts
         pool:
@@ -140,8 +154,8 @@ extends:
                 !scripts
               TargetFolder: '$(Build.SourcesDirectory)/out'
 
-    - stage: Test_ACR_Push
-      dependsOn: Package_Ev2
+    - stage: test_acr_push
+      dependsOn: package_ev2
       variables:
         ob_release_environment: Test
       
