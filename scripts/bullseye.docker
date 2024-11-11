@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye AS builder
+=======
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.23-bullseye AS builder
+>>>>>>> 0167ebb06 (fix: Updated image tag as new image is published for major version only)
 WORKDIR /go/src/github.com/influxdata/telegraf
 
 COPY . /go/src/github.com/influxdata/telegraf
