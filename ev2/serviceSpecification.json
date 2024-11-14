@@ -1,8 +1,0 @@
-{
-	"providerType": "ServiceTree",
-	"identifier": "668c23b3-bd03-400a-b044-916a23c37797",
-	"description": "CIH Atlas SDLT Application",
-	"ownerGroupContactEmail": "cihdev@microsoft.com",
-	"policyCheckEnabled": true,
-	"contentVersion": "1.0.0.0"
-}
