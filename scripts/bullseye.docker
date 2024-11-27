@@ -7,6 +7,7 @@ RUN go build cmd/oauth/get_token.go
 RUN go build cmd/oauth/get_classic_token_username_password.go
 RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
+RUN go build cmd/oauth/get_oauth2_token_password_credentials.go
 
 FROM buildpack-deps:bullseye-curl
 COPY --from=builder /go/bin/* /usr/bin/
@@ -18,11 +19,13 @@ COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token /tmp/telegr
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_classic_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_username_password /tmp/telegraf/
 COPY --from=builder /go/src/github.com/influxdata/telegraf/get_token_basic_auth_username_password /tmp/telegraf/
+COPY --from=builder /go/src/github.com/influxdata/telegraf/get_oauth2_token_password_credentials /tmp/telegraf/
 
 RUN chmod +x /tmp/telegraf/get_token
 RUN chmod +x /tmp/telegraf/get_classic_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_username_password
 RUN chmod +x /tmp/telegraf/get_token_basic_auth_username_password
+RUN chmod +x /tmp/telegraf/get_oauth2_token_password_credentials
 
 EXPOSE 8125/udp 8092/udp 8094
 
