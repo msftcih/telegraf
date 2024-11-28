@@ -22,14 +22,14 @@ type AuthToken struct {
 
 func main() {
 	method := "POST"
-	oauth_url := os.Getenv("oauth_url")
+	oauth_url := os.Args[1]
 	client_id := os.Getenv("client_id")
 	client_secret := os.Getenv("client_secret")
 	username := os.Getenv("username")
 	password := os.Getenv("password")
 	oauth_grant_type := os.Getenv("oauth_grant_type")
 	oauth_content_type := os.Getenv("oauth_content_type")
-	output_file := "/tmp/telegraf/access_token"	
+	output_file := os.Args[2]
 	
 	if len(client_id) == 0 {
 		log.Printf("invalid client_id with length , %d\n", len(client_id))
