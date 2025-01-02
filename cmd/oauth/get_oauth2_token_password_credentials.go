@@ -34,7 +34,6 @@ func main() {
 	client_secret := os.Getenv("client_secret")
 	username := os.Getenv("username")
 	password := os.Getenv("password")
-	oauth_grant_type := os.Getenv("oauth_grant_type")
 	oauth_content_type := os.Getenv("oauth_content_type")
 	output_file := flag.String("o", "/tmp/telegraf/access_token", "Access Token File")
 	refresh_token_file := flag.String("r", "/tmp/telegraf/refresh_token", "Refresh Token File")
@@ -79,6 +78,14 @@ func main() {
 		req_body.Set("refresh_token", string(refreshToken))
 	}
 	req_body.Set("grant_type", oauth_grant_type)
+	// Add refresh token header if oauth_issue_type is refresh
+	if oauth_issue_type == "refresh" {
+		refreshToken, err := ioutil.ReadFile(refresh_token_file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		req_body.Set("refresh_token", string(refreshToken))
+	}
 
 	var payload = strings.NewReader(req_body.Encode())
 
