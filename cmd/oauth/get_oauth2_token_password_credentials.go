@@ -33,6 +33,7 @@ func main() {
 	client_secret := os.Getenv("client_secret")
 	username := os.Getenv("username")
 	password := os.Getenv("password")
+	oauth_grant_type := os.Getenv("oauth_grant_type")
 	oauth_content_type := os.Getenv("oauth_content_type")
 	output_file := flag.String("o", "/tmp/telegraf/access_token", "Access Token File")
 	refresh_token_file := flag.String("r", "/tmp/telegraf/refresh_token", "Refresh Token File")
