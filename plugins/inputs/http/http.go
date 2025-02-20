@@ -36,7 +36,6 @@ type HTTP struct {
 	Password config.Secret `toml:"password"`
 
 	// Bearer authentication
-
 	BearerToken             string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
 	RemoveBearerTokenPrefix bool          `toml:"remove_bearer_token_prefix"`
 	Token                   config.Secret `toml:"token"`
