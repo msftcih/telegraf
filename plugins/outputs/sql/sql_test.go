@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,36 +17,6 @@ import (
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/testutil"
 )
-
-func TestSqlQuoteIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-}
-
-func TestSqlCreateStatementIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-}
-
-func TestSqlInsertStatementIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
-}
-
-func pwgen(n int) string {
-	charset := []byte("abcdedfghijklmnopqrstABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-	nchars := len(charset)
-	buffer := make([]byte, 0, n)
-	for i := 0; i < n; i++ {
-		buffer = append(buffer, charset[rand.Intn(nchars)])
-	}
-
-	return string(buffer)
-}
 
 func stableMetric(
 	name string,
@@ -169,7 +138,7 @@ func TestMysqlIntegration(t *testing.T) {
 	// var. We'll use root to insert and query test data.
 	const username = "root"
 
-	password := pwgen(32)
+	password := testutil.GetRandomString(32)
 	outDir := t.TempDir()
 
 	servicePort := "3306"
@@ -188,34 +157,34 @@ func TestMysqlIntegration(t *testing.T) {
 			wait.ForLog("mariadbd: ready for connections.").WithOccurrence(2),
 		),
 	}
-	err = container.Start()
-	require.NoError(t, err, "failed to start container")
+	require.NoError(t, container.Start(), "failed to start container")
 	defer container.Terminate()
 
 	// use the plugin to write to the database
 	address := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v",
 		username, password, container.Address, container.Ports[servicePort], dbname,
 	)
-	p := newSQL()
-	p.Log = testutil.Logger{}
-	p.Driver = "mysql"
-	p.DataSourceName = address
-	p.InitSQL = "SET sql_mode='ANSI_QUOTES';"
+	p := &SQL{
+		Driver:            "mysql",
+		DataSourceName:    address,
+		Convert:           defaultConvert,
+		InitSQL:           "SET sql_mode='ANSI_QUOTES';",
+		TimestampColumn:   "timestamp",
+		ConnectionMaxIdle: 2,
+		Log:               testutil.Logger{},
+	}
+	require.NoError(t, p.Init())
 
 	require.NoError(t, p.Connect())
-	require.NoError(t, p.Write(
-		testMetrics,
-	))
+	require.NoError(t, p.Write(testMetrics))
 
-	cases := []struct {
-		expectedFile string
-	}{
-		{"./testdata/mariadb/expected_metric_one.sql"},
-		{"./testdata/mariadb/expected_metric_two.sql"},
-		{"./testdata/mariadb/expected_metric_three.sql"},
+	files := []string{
+		"./testdata/mariadb/expected_metric_one.sql",
+		"./testdata/mariadb/expected_metric_two.sql",
+		"./testdata/mariadb/expected_metric_three.sql",
 	}
-	for _, tc := range cases {
-		expected, err := os.ReadFile(tc.expectedFile)
+	for _, fn := range files {
+		expected, err := os.ReadFile(fn)
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
@@ -224,7 +193,8 @@ func TestMysqlIntegration(t *testing.T) {
 				"-c",
 				"mariadb-dump --user=" + username +
 					" --password=" + password +
-					" --compact --skip-opt " +
+					" --compact" +
+					" --skip-opt " +
 					dbname,
 			})
 			require.NoError(t, err)
@@ -234,7 +204,7 @@ func TestMysqlIntegration(t *testing.T) {
 			require.NoError(t, err)
 
 			return bytes.Contains(b, expected)
-		}, 10*time.Second, 500*time.Millisecond, tc.expectedFile)
+		}, 10*time.Second, 500*time.Millisecond, fn)
 	}
 }
 
@@ -252,7 +222,7 @@ func TestPostgresIntegration(t *testing.T) {
 	// default username for postgres is postgres
 	const username = "postgres"
 
-	password := pwgen(32)
+	password := testutil.GetRandomString(32)
 	outDir := t.TempDir()
 
 	servicePort := "5432"
@@ -271,8 +241,7 @@ func TestPostgresIntegration(t *testing.T) {
 			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
 		),
 	}
-	err = container.Start()
-	require.NoError(t, err, "failed to start container")
+	require.NoError(t, container.Start(), "failed to start container")
 	defer container.Terminate()
 
 	// use the plugin to write to the database
@@ -280,19 +249,22 @@ func TestPostgresIntegration(t *testing.T) {
 	address := fmt.Sprintf("postgres://%v:%v@%v:%v/%v",
 		username, password, container.Address, container.Ports[servicePort], dbname,
 	)
-	p := newSQL()
-	p.Log = testutil.Logger{}
-	p.Driver = "pgx"
-	p.DataSourceName = address
+	p := &SQL{
+		Driver:            "pgx",
+		DataSourceName:    address,
+		Convert:           defaultConvert,
+		TimestampColumn:   "timestamp",
+		ConnectionMaxIdle: 2,
+		Log:               testutil.Logger{},
+	}
 	p.Convert.Real = "double precision"
 	p.Convert.Unsigned = "bigint"
 	p.Convert.ConversionStyle = "literal"
+	require.NoError(t, p.Init())
 
 	require.NoError(t, p.Connect())
 	defer p.Close()
-	require.NoError(t, p.Write(
-		testMetrics,
-	))
+	require.NoError(t, p.Write(testMetrics))
 	require.NoError(t, p.Close())
 
 	expected, err := os.ReadFile("./testdata/postgres/expected.sql")
@@ -304,10 +276,7 @@ func TestPostgresIntegration(t *testing.T) {
 			"-c",
 			"pg_dump" +
 				" --username=" + username +
-				// " --password=" + password +
-				//			" --compact --skip-opt " +
 				" --no-comments" +
-				// " --data-only" +
 				" " + dbname +
 				// pg_dump's output has comments that include build info
 				// of postgres and pg_dump. The build info changes with
@@ -340,15 +309,20 @@ func TestClickHouseIntegration(t *testing.T) {
 	// initdb/init.sql creates this database
 	const dbname = "foo"
 
-	// default username for clickhouse is default
-	const username = "default"
+	// username for connecting to clickhouse
+	const username = "clickhouse"
 
+	password := testutil.GetRandomString(32)
 	outDir := t.TempDir()
 
 	servicePort := "9000"
 	container := testutil.Container{
 		Image:        "clickhouse",
 		ExposedPorts: []string{servicePort, "8123"},
+		Env: map[string]string{
+			"CLICKHOUSE_USER":     "clickhouse",
+			"CLICKHOUSE_PASSWORD": password,
+		},
 		Files: map[string]string{
 			"/docker-entrypoint-initdb.d/script.sql":                initdb,
 			"/etc/clickhouse-server/config.d/enable_stdout_log.xml": logConfig,
@@ -360,19 +334,21 @@ func TestClickHouseIntegration(t *testing.T) {
 			wait.ForLog("Ready for connections"),
 		),
 	}
-	err = container.Start()
-	require.NoError(t, err, "failed to start container")
+	require.NoError(t, container.Start(), "failed to start container")
 	defer container.Terminate()
 
 	// use the plugin to write to the database
 	// host, port, username, password, dbname
-	address := fmt.Sprintf("tcp://%v:%v/%v?username=%v",
-		container.Address, container.Ports[servicePort], dbname, username)
-	p := newSQL()
-	p.Log = testutil.Logger{}
-	p.Driver = "clickhouse"
-	p.DataSourceName = address
-	p.TableTemplate = "CREATE TABLE {TABLE}({COLUMNS}) ENGINE MergeTree() ORDER by timestamp"
+	address := fmt.Sprintf("tcp://%s:%s/%s?username=%s&password=%s",
+		container.Address, container.Ports[servicePort], dbname, username, password)
+	p := &SQL{
+		Driver:            "clickhouse",
+		DataSourceName:    address,
+		Convert:           defaultConvert,
+		TimestampColumn:   "timestamp",
+		ConnectionMaxIdle: 2,
+		Log:               testutil.Logger{},
+	}
 	p.Convert.Integer = "Int64"
 	p.Convert.Text = "String"
 	p.Convert.Timestamp = "DateTime"
@@ -380,6 +356,7 @@ func TestClickHouseIntegration(t *testing.T) {
 	p.Convert.Unsigned = "UInt64"
 	p.Convert.Bool = "UInt8"
 	p.Convert.ConversionStyle = "literal"
+	require.NoError(t, p.Init())
 
 	require.NoError(t, p.Connect())
 	require.NoError(t, p.Write(testMetrics))
@@ -402,9 +379,8 @@ func TestClickHouseIntegration(t *testing.T) {
 					" --user=" + username +
 					" --database=" + dbname +
 					" --format=TabSeparatedRaw" +
-					" --multiquery --query=" +
-					"\"SELECT * FROM \\\"" + tc.table + "\\\";" +
-					"SHOW CREATE TABLE \\\"" + tc.table + "\\\"\"",
+					" --multiquery" +
+					` --query="SELECT * FROM \"` + tc.table + `\"; SHOW CREATE TABLE \"` + tc.table + `\""`,
 			})
 			require.NoError(t, err)
 			b, err := io.ReadAll(out)
@@ -451,8 +427,97 @@ func TestClickHouseDsnConvert(t *testing.T) {
 		},
 	}
 
-	log := testutil.Logger{}
-	for _, test := range tests {
-		require.Equal(t, test.expected, convertClickHouseDsn(test.input, log))
+	for _, tt := range tests {
+		plugin := &SQL{
+			Driver:         "clickhouse",
+			DataSourceName: tt.input,
+			Log:            testutil.Logger{},
+		}
+		require.NoError(t, plugin.Init())
+		require.Equal(t, tt.expected, plugin.DataSourceName)
+	}
+}
+
+func TestMysqlEmptyTimestampColumnIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	initdb, err := filepath.Abs("testdata/mariadb_no_timestamp/initdb/script.sql")
+	require.NoError(t, err)
+
+	// initdb/script.sql creates this database
+	const dbname = "foo"
+
+	// The mariadb image lets you set the root password through an env
+	// var. We'll use root to insert and query test data.
+	const username = "root"
+
+	password := testutil.GetRandomString(32)
+	outDir := t.TempDir()
+
+	servicePort := "3306"
+	container := testutil.Container{
+		Image: "mariadb",
+		Env: map[string]string{
+			"MARIADB_ROOT_PASSWORD": password,
+		},
+		Files: map[string]string{
+			"/docker-entrypoint-initdb.d/script.sql": initdb,
+			"/out":                                   outDir,
+		},
+		ExposedPorts: []string{servicePort},
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort(nat.Port(servicePort)),
+			wait.ForLog("mariadbd: ready for connections.").WithOccurrence(2),
+		),
+	}
+	require.NoError(t, container.Start(), "failed to start container")
+	defer container.Terminate()
+
+	// use the plugin to write to the database
+	address := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v",
+		username, password, container.Address, container.Ports[servicePort], dbname,
+	)
+	p := &SQL{
+		Driver:            "mysql",
+		DataSourceName:    address,
+		Convert:           defaultConvert,
+		InitSQL:           "SET sql_mode='ANSI_QUOTES';",
+		ConnectionMaxIdle: 2,
+		Log:               testutil.Logger{},
+	}
+	require.NoError(t, p.Init())
+
+	require.NoError(t, p.Connect())
+	require.NoError(t, p.Write(testMetrics))
+
+	files := []string{
+		"./testdata/mariadb_no_timestamp/expected_metric_one.sql",
+		"./testdata/mariadb_no_timestamp/expected_metric_two.sql",
+		"./testdata/mariadb_no_timestamp/expected_metric_three.sql",
+	}
+	for _, fn := range files {
+		expected, err := os.ReadFile(fn)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			rc, out, err := container.Exec([]string{
+				"bash",
+				"-c",
+				"mariadb-dump --user=" + username +
+					" --password=" + password +
+					" --compact" +
+					" --skip-opt " +
+					dbname,
+			})
+			require.NoError(t, err)
+			require.Equal(t, 0, rc)
+
+			b, err := io.ReadAll(out)
+			require.NoError(t, err)
+
+			return bytes.Contains(b, expected)
+		}, 10*time.Second, 500*time.Millisecond, fn)
 	}
 }
