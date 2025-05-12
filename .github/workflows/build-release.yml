@@ -111,3 +111,4 @@ jobs:
       - name: Push Dev
         run: |
           docker push ${{ secrets.REGISTRY_LOGIN_SERVER_PROD }}/telegraf:master-${{ needs.docker_build.outputs.dt-now }}
+

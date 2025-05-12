@@ -41,9 +41,6 @@ type HTTP struct {
 	Token                   config.Secret `toml:"token"`
 	TokenFile               string        `toml:"token_file"`
 
-	BearerToken string        `toml:"bearer_token" deprecated:"1.28.0;1.35.0;use 'token_file' instead"`
-	Token       config.Secret `toml:"token"`
-	TokenFile   string        `toml:"token_file"`
 
 
 	Headers            map[string]*config.Secret `toml:"headers"`
@@ -158,21 +155,6 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		}
 
 
-		fmt.Println("Is remove bearer token prefix set: ", h.RemoveBearerTokenPrefix)
-		bearer := "Bearer " + strings.TrimSpace(token.String())
-		if h.RemoveBearerTokenPrefix {
-			bearer = strings.TrimSpace(token.String())
-		}
-
-		token.Destroy()
-		request.Header.Set("Authorization", bearer)
-	} else if h.TokenFile != "" {
-		token, err := os.ReadFile(h.TokenFile)
-		if err != nil {
-			return err
-		}
-
-
 		bearer := "Bearer " + strings.Trim(string(token), "\n")
 		if h.RemoveBearerTokenPrefix {
 			bearer = strings.Trim(string(token), "\n")
@@ -190,10 +172,6 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
 
-	subscriptionKey := os.Getenv("subscriptionkey")
-	if len(subscriptionKey) > 0 {
-		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
-	}
 
 	for k, v := range h.Headers {
 		secret, err := v.Get()
