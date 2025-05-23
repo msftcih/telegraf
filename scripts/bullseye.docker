@@ -13,6 +13,7 @@ RUN go build cmd/oauth/get_oauth2_token_password_credentials.go
 FROM buildpack-deps:bullseye-curl
 COPY --from=builder /go/bin/* /usr/bin/
 COPY etc/telegraf.conf /etc/telegraf/telegraf.conf
+COPY --from=builder /usr/bin/ldd /usr/bin/ldd
 
 RUN mkdir -p /tmp/telegraf
 COPY --from=builder /go/bin/* /usr/bin/
