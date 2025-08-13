@@ -9,10 +9,15 @@ RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
 RUN go build cmd/oauth/get_oauth2_token_password_credentials.go
 
-FROM buildpack-deps:bullseye-curl
+FROM mcr.microsoft.com/mirror/docker/library/buildpack-deps:bullseye
+# Update libsystemd0 and libc-bin (ldd) to latest
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsystemd0 libc-bin \
+    && dpkg-query -W -f='${Package} ${Version}\n' libsystemd0 libc-bin \
+    && ldd --version \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /go/bin/* /usr/bin/
 COPY etc/telegraf.conf /etc/telegraf/telegraf.conf
-COPY --from=builder /usr/bin/ldd /usr/bin/ldd
 
 RUN mkdir -p /tmp/telegraf
 COPY --from=builder /go/bin/* /usr/bin/
