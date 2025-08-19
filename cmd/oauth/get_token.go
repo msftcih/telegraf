@@ -26,22 +26,23 @@ func main() {
 	subscriptionKey := os.Getenv("subscriptionkey")
 	oauth_audience := os.Getenv("oauth_audience")
 	oauth_scope := os.Getenv("oauth_scope")
+	oauth_resource := os.Getenv("oauth_resource")
 	oauth_grant_type := os.Getenv("oauth_grant_type")
 	oauth_content_type := os.Getenv("oauth_content_type")
-	output_file := "/tmp/telegraf/access_token"	
-	
+	output_file := "/tmp/telegraf/access_token"
+
 	if len(client_id) == 0 {
-		log.Printf("invalid client_id, %d\n", len(client_id))
+		log.Printf("client_id is empty")
 		return
 	}
 
 	if len(client_secret) == 0 {
-		log.Println("invalid client_secret")
+		log.Printf("client_secret is empty")
 		return
 	}
 
 	if len(output_file) == 0 {
-		log.Println("invalid output file")
+		log.Printf("Token output_file is empty")
 		return
 	}
 
@@ -57,13 +58,18 @@ func main() {
 		body.Set("client_id", client_id)
 		body.Set("client_secret", client_secret)
 		body.Set("grant_type", oauth_grant_type)
-		
+
 		if len(oauth_scope) > 0 {
 			body.Set("scope", oauth_scope)
 		}
-		
+
 		if len(oauth_audience) > 0 {
+			// bug??
 			body.Set("audiance", oauth_audience)
+		}
+
+		if len(oauth_resource) > 0 {
+			body.Set("resource", oauth_resource)
 		}
 
 		payload = strings.NewReader(body.Encode())
@@ -76,25 +82,25 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	
+
 	if len(subscriptionKey) > 0 {
 		req.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
-	
+
 	req.Header.Add("Content-Type", oauth_content_type)
 
 	res, err := client.Do(req)
 	if err != nil {
-			log.Fatal(err)
-			fmt.Println(err)
+		log.Fatal(err)
+		fmt.Println(err)
 		return
 	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-			log.Fatal(err)
-			fmt.Println(err)
+		log.Fatal(err)
+		fmt.Println(err)
 		return
 	}
 	fmt.Println(string(body))
