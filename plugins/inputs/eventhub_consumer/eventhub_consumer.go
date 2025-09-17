@@ -5,12 +5,18 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-amqp-common-go/v4/auth"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	eventhub "github.com/Azure/azure-event-hubs-go/v3"
 	"github.com/Azure/azure-event-hubs-go/v3/persist"
+	"github.com/Azure/go-autorest/autorest/adal"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
@@ -24,6 +30,7 @@ var once sync.Once
 
 const (
 	defaultMaxUndeliveredMessages = 1000
+	defaultConsumerGroup          = "$Default"
 )
 
 type EventHub struct {
@@ -40,6 +47,12 @@ type EventHub struct {
 	MaxUndeliveredMessages int       `toml:"max_undelivered_messages"`
 	EnqueuedTimeAsTS       bool      `toml:"enqueued_time_as_ts"`
 	IotHubEnqueuedTimeAsTS bool      `toml:"iot_hub_enqueued_time_as_ts"`
+
+	// Managed Identity Configuration
+	UseManagedIdentity bool   `toml:"use_managed_identity"`
+	ManagedIdentityID  string `toml:"managed_identity_id"`
+	EventHubNamespace  string `toml:"eventhub_namespace"`
+	EventHubName       string `toml:"eventhub_name"`
 
 	// Metadata
 	ApplicationPropertyFields     []string `toml:"application_property_fields"`
@@ -80,6 +93,11 @@ func (e *EventHub) Init() (err error) {
 		e.MaxUndeliveredMessages = defaultMaxUndeliveredMessages
 	}
 
+	// Set default consumer group if not specified
+	if e.ConsumerGroup == "" {
+		e.ConsumerGroup = defaultConsumerGroup
+	}
+
 	// Set hub options
 	hubOpts := make([]eventhub.HubOption, 0, 2)
 
@@ -98,14 +116,177 @@ func (e *EventHub) Init() (err error) {
 		hubOpts = append(hubOpts, eventhub.HubWithUserAgent(internal.ProductToken()))
 	}
 
-	// Create event hub connection
-	if e.ConnectionString != "" {
+	// Create event hub connection based on authentication method
+	if e.UseManagedIdentity {
+		// Use Managed Identity authentication
+		if e.EventHubNamespace == "" || e.EventHubName == "" {
+			return fmt.Errorf("eventhub_namespace and eventhub_name are required when using managed identity")
+		}
+
+		// Create managed identity token provider
+		tokenProvider, err := e.createManagedIdentityTokenProvider()
+		if err != nil {
+			return fmt.Errorf("failed to create managed identity token provider: %w", err)
+		}
+
+		// Create Event Hub client with managed identity
+		e.hub, err = eventhub.NewHub(e.EventHubNamespace, e.EventHubName, tokenProvider, hubOpts...)
+		if err != nil {
+			return fmt.Errorf("failed to create Event Hub client with managed identity: %w", err)
+		}
+	} else if e.ConnectionString != "" {
+		// Use connection string authentication
 		e.hub, err = eventhub.NewHubFromConnectionString(e.ConnectionString, hubOpts...)
 	} else {
+		// Use environment variables authentication
 		e.hub, err = eventhub.NewHubFromEnvironment(hubOpts...)
 	}
 
 	return err
+}
+
+// managedIdentityTokenProvider is a custom token provider that wraps Azure Managed Identity tokens
+type managedIdentityTokenProvider struct {
+	servicePrincipalToken *adal.ServicePrincipalToken
+}
+
+// GetToken implements the auth.TokenProvider interface
+func (m *managedIdentityTokenProvider) GetToken(uri string) (*auth.Token, error) {
+	// Refresh the token if needed
+	err := m.servicePrincipalToken.Refresh()
+	if err != nil {
+		return nil, fmt.Errorf("failed to refresh managed identity token: %w", err)
+	}
+
+	// Extract the token
+	oauthToken := m.servicePrincipalToken.OAuthToken()
+
+	// Convert to auth.Token format
+	expiryTime := m.servicePrincipalToken.Token().Expires().Format("2006-01-02T15:04:05Z")
+	token := auth.NewToken(auth.CBSTokenTypeJWT, oauthToken, expiryTime)
+
+	return token, nil
+}
+
+// workloadIdentityTokenProvider is a custom token provider that wraps Azure Workload Identity tokens
+type workloadIdentityTokenProvider struct {
+	credential azcore.TokenCredential
+}
+
+// GetToken implements the auth.TokenProvider interface
+func (w *workloadIdentityTokenProvider) GetToken(uri string) (*auth.Token, error) {
+	// Request token for Event Hubs scope
+	scope := "https://eventhubs.azure.net/.default"
+	tokenRequestOptions := policy.TokenRequestOptions{
+		Scopes: []string{scope},
+	}
+
+	// Get token from Azure Identity
+	accessToken, err := w.credential.GetToken(context.Background(), tokenRequestOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get workload identity token: %w", err)
+	}
+
+	// Convert to auth.Token format
+	expiryTime := accessToken.ExpiresOn.Format("2006-01-02T15:04:05Z")
+	token := auth.NewToken(auth.CBSTokenTypeJWT, accessToken.Token, expiryTime)
+
+	return token, nil
+}
+
+// This function intelligently chooses between Azure Workload Identity (for AKS) and Managed Identity (for VMs)
+func (e *EventHub) createManagedIdentityTokenProvider() (auth.TokenProvider, error) {
+	// Check if we're in an Azure Workload Identity environment
+	if e.isWorkloadIdentityEnvironment() {
+		e.Log.Info("Detected Azure Workload Identity environment, attempting workload identity authentication")
+		return e.createWorkloadIdentityTokenProvider()
+	}
+
+	// Fall back to traditional Managed Identity
+	e.Log.Info("Using traditional Azure Managed Identity authentication")
+	return e.createTraditionalManagedIdentityTokenProvider()
+}
+
+// isWorkloadIdentityEnvironment checks if we're running in an Azure Workload Identity environment
+func (e *EventHub) isWorkloadIdentityEnvironment() bool {
+	// Azure Workload Identity sets these environment variables
+	return os.Getenv("AZURE_CLIENT_ID") != "" &&
+		os.Getenv("AZURE_TENANT_ID") != "" &&
+		os.Getenv("AZURE_FEDERATED_TOKEN_FILE") != ""
+}
+
+// createWorkloadIdentityTokenProvider creates a token provider using Azure Workload Identity
+func (e *EventHub) createWorkloadIdentityTokenProvider() (auth.TokenProvider, error) {
+	var credential azcore.TokenCredential
+	var err error
+
+	// Use the client ID from configuration or environment
+	clientID := e.ManagedIdentityID
+	if clientID == "" {
+		clientID = os.Getenv("AZURE_CLIENT_ID")
+	}
+
+	if clientID != "" {
+		// Create workload identity credential with explicit client ID
+		options := &azidentity.WorkloadIdentityCredentialOptions{
+			ClientID: clientID,
+			TenantID: os.Getenv("AZURE_TENANT_ID"),
+			TokenFilePath: os.Getenv("AZURE_FEDERATED_TOKEN_FILE"),
+		}
+		credential, err = azidentity.NewWorkloadIdentityCredential(options)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create workload identity credential with client ID %s: %w", clientID, err)
+		}
+		e.Log.Infof("Created Azure Workload Identity credential with client ID: %s", clientID)
+	} else {
+		// Use default workload identity credential
+		credential, err = azidentity.NewWorkloadIdentityCredential(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create default workload identity credential: %w", err)
+		}
+		e.Log.Info("Created Azure Workload Identity credential with default settings")
+	}
+
+	return &workloadIdentityTokenProvider{credential: credential}, nil
+}
+
+// createTraditionalManagedIdentityTokenProvider creates a token provider using traditional Managed Identity
+func (e *EventHub) createTraditionalManagedIdentityTokenProvider() (auth.TokenProvider, error) {
+	var msiOptions *adal.ManagedIdentityOptions
+	clientID := e.ManagedIdentityID
+
+	// If no explicit client ID is configured, check environment variable
+	if clientID == "" {
+		if envClientID := os.Getenv("AZURE_CLIENT_ID"); envClientID != "" {
+			clientID = envClientID
+			e.Log.Infof("Using client ID from AZURE_CLIENT_ID environment variable: %s", clientID)
+		}
+	}
+
+	resource := "https://eventhubs.azure.net/"
+	var servicePrincipalToken *adal.ServicePrincipalToken
+	var err error
+
+	if clientID != "" {
+		// Use User-Assigned Managed Identity
+		msiOptions = &adal.ManagedIdentityOptions{
+			ClientID: clientID,
+		}
+		e.Log.Infof("Creating User-Assigned Managed Identity token with client ID: %s", clientID)
+		servicePrincipalToken, err = adal.NewServicePrincipalTokenFromManagedIdentity(resource, msiOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create User-Assigned Managed Identity token (client_id: %s): %w", clientID, err)
+		}
+	} else {
+		// Use System-Assigned Managed Identity
+		e.Log.Info("Creating System-Assigned Managed Identity token")
+		servicePrincipalToken, err = adal.NewServicePrincipalTokenFromManagedIdentity(resource, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create System-Assigned Managed Identity token: %w", err)
+		}
+	}
+
+	return &managedIdentityTokenProvider{servicePrincipalToken: servicePrincipalToken}, nil
 }
 
 func (e *EventHub) SetParser(parser telegraf.Parser) {
