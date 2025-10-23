@@ -1,8 +1,14 @@
 package main
 
 //script to issue oauth2 token requests from telegraf
-//Usage: get_oauth2_token_password_credentials.go -u <oauth_url> -i <oauth_issue_type-new/refresh> -o <access_token_file> -r <refresh_token_file> -ca <ca_cert_file>
+//Usage: get_oauth2_token_password_credentials.go -u <oauth_url> -i <oauth_issue_type-new/refresh> -o <access_token_file> -r <refresh_token_file> -ca <ca_cert_file> -cert <client_cert_file> -key <client_key_file> -data <json_data> -token-key <token_key_name> -refresh-token-key <refresh_token_key_name>
 //refresh_token_file is optional and only required for refresh token requests
+//cert and key are optional and used for mTLS authentication
+//data is optional JSON string that will be sent as request body (overrides default form-encoded body)
+//token-key is optional, defaults to "access_token" - specifies the JSON key path for the access token in response (supports nested keys like "data.token")
+//refresh-token-key is optional, defaults to "refresh_token" - specifies the JSON key path for the refresh token in response (supports nested keys)
+//error-file is optional, defaults to "/tmp/telegraf/token_generation_error" - where errors will be written
+//Environment variables (client_id, client_secret, username, password, oauth_grant_type, oauth_content_type) are all optional
 import (
 	"crypto/tls"
 	"crypto/x509"
@@ -26,6 +32,26 @@ type AuthToken struct {
 	TokenType    string `json:"token_type"`
 }
 
+// getNestedValue extracts a value from nested JSON using dot notation (e.g., "data.token")
+func getNestedValue(data map[string]interface{}, path string) (interface{}, bool) {
+	keys := strings.Split(path, ".")
+	var current interface{} = data
+
+	for _, key := range keys {
+		if m, ok := current.(map[string]interface{}); ok {
+			if val, exists := m[key]; exists {
+				current = val
+			} else {
+				return nil, false
+			}
+		} else {
+			return nil, false
+		}
+	}
+
+	return current, true
+}
+
 func main() {
 	method := "POST"
 	oauth_url := flag.String("u", "", "OAuth URL")
@@ -39,6 +65,12 @@ func main() {
 	output_file := flag.String("o", "/tmp/telegraf/access_token", "Access Token File")
 	refresh_token_file := flag.String("r", "/tmp/telegraf/refresh_token", "Refresh Token File")
 	caCertFile := flag.String("ca", "", "CA Cert File")
+	clientCertFile := flag.String("cert", "", "Client Cert File for mTLS")
+	clientKeyFile := flag.String("key", "", "Client Key File for mTLS")
+	jsonData := flag.String("data", "", "JSON data to send as request body")
+	tokenKey := flag.String("token-key", "access_token", "JSON key path for access token in response (supports nested keys like 'data.token')")
+	refreshTokenKey := flag.String("refresh-token-key", "refresh_token", "JSON key path for refresh token in response (supports nested keys)")
+	errorFile := flag.String("error-file", "/tmp/telegraf/token_generation_error", "Error log file")
 
 	flag.Parse()
 
@@ -117,7 +149,9 @@ func main() {
 	req, err := http.NewRequest(method, *oauth_url, payload)
 
 	if err != nil {
-		fmt.Println(err)
+		errMsg := fmt.Sprintf("Error creating HTTP request: %v", err)
+		writeError(errMsg)
+		log.Fatal(errMsg)
 		return
 	}
 
@@ -141,14 +175,50 @@ func main() {
 		return
 	}
 
-	var authToken AuthToken
-	json.Unmarshal([]byte(string(body)), &authToken)
+	// Check HTTP status code
+	if res.StatusCode >= 400 {
+		errMsg := fmt.Sprintf("HTTP request failed with status %d: %s\nResponse body: %s", res.StatusCode, res.Status, string(body))
+		writeError(errMsg)
+		log.Fatal(errMsg)
+		return
+	}
 
+	// Parse response as generic JSON map to support configurable token keys
+	var responseData map[string]interface{}
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		errMsg := fmt.Sprintf("Error parsing JSON response: %v\nResponse body: %s", err, string(body))
+		writeError(errMsg)
+		log.Fatal(errMsg)
+		return
+	}
+
+	// Extract access token using the configured key path (supports nested keys)
+	var accessToken string
+	if tokenValue, ok := getNestedValue(responseData, *tokenKey); ok {
+		if tokenStr, ok := tokenValue.(string); ok {
+			accessToken = tokenStr
+		} else {
+			errMsg := fmt.Sprintf("Token value for key path '%s' is not a string. Response: %s", *tokenKey, string(body))
+			writeError(errMsg)
+			log.Fatal(errMsg)
+			return
+		}
+	} else {
+		errMsg := fmt.Sprintf("Token key path '%s' not found in response. Response: %s", *tokenKey, string(body))
+		writeError(errMsg)
+		log.Fatal(errMsg)
+		return
+	}
+
+	// Write access token to file
 	f, err := os.Create(*output_file)
 	if err != nil {
-		log.Fatal(err)
+		errMsg := fmt.Sprintf("Error creating access token file: %v", err)
+		writeError(errMsg)
+		log.Fatal(errMsg)
 	}
-	f.WriteString(authToken.AccessToken)
+	defer f.Close()
+	f.WriteString(accessToken)
 
 	// Write refresh token to file if it exists in response
 	if authToken.RefreshToken != "" {
