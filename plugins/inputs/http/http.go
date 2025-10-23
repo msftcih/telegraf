@@ -40,6 +40,7 @@ type HTTP struct {
 	RemoveBearerTokenPrefix bool          `toml:"remove_bearer_token_prefix"`
 	Token                   config.Secret `toml:"token"`
 	TokenFile               string        `toml:"token_file"`
+	TokenHeaderName         string        `toml:"token_header_name"`
 
 	Headers            map[string]*config.Secret `toml:"headers"`
 	SuccessStatusCodes []int                     `toml:"success_status_codes"`
@@ -133,6 +134,12 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		return err
 	}
 
+	// Set default token header name if not specified
+	tokenHeaderName := "Authorization"
+	if h.TokenHeaderName != "" {
+		tokenHeaderName = h.TokenHeaderName
+	}
+
 	if !h.Token.Empty() {
 		token, err := h.Token.Get()
 		if err != nil {
@@ -146,7 +153,7 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		}
 
 		token.Destroy()
-		request.Header.Set("Authorization", bearer)
+		request.Header.Set(tokenHeaderName, bearer)
 	} else if h.TokenFile != "" {
 		token, err := os.ReadFile(h.TokenFile)
 		if err != nil {
@@ -158,7 +165,7 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 			bearer = strings.Trim(string(token), "\n")
 		}
 
-		request.Header.Set("Authorization", bearer)
+		request.Header.Set(tokenHeaderName, bearer)
 	}
 
 	if h.ContentEncoding == "gzip" {

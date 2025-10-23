@@ -52,6 +52,26 @@ func getNestedValue(data map[string]interface{}, path string) (interface{}, bool
 	return current, true
 }
 
+// getNestedValue extracts a value from nested JSON using dot notation (e.g., "data.token")
+func getNestedValue(data map[string]interface{}, path string) (interface{}, bool) {
+	keys := strings.Split(path, ".")
+	var current interface{} = data
+
+	for _, key := range keys {
+		if m, ok := current.(map[string]interface{}); ok {
+			if val, exists := m[key]; exists {
+				current = val
+			} else {
+				return nil, false
+			}
+		} else {
+			return nil, false
+		}
+	}
+
+	return current, true
+}
+
 func main() {
 	method := "POST"
 	oauth_url := flag.String("u", "", "OAuth URL")
@@ -73,7 +93,6 @@ func main() {
 	errorFile := flag.String("error-file", "/tmp/telegraf/token_generation_error", "Error log file")
 
 	flag.Parse()
-
 	// Helper function to write errors to both log and file
 	writeError := func(errMsg string) {
 		log.Println(errMsg)
@@ -126,7 +145,6 @@ func main() {
 		caCertPool.AppendCertsFromPEM(caCert)
 		tlsConfig.RootCAs = caCertPool
 	}
-
 	// Load client cert and key for mTLS if provided
 	if *clientCertFile != "" && *clientKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(*clientCertFile, *clientKeyFile)
@@ -142,7 +160,6 @@ func main() {
 		writeError(errMsg)
 		log.Fatal(errMsg)
 	}
-
 	// Create HTTP client with TLS configuration if any TLS settings were configured
 	client := &http.Client{}
 	if *caCertFile != "" || (*clientCertFile != "" && *clientKeyFile != "") {
@@ -171,7 +188,6 @@ func main() {
 	if len(oauth_content_type) > 0 {
 		req.Header.Add("Content-Type", oauth_content_type)
 	}
-
 	res, err := client.Do(req)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error executing HTTP request: %v", err)
@@ -248,7 +264,6 @@ func main() {
 			rf.WriteString(refreshTokenStr)
 		}
 	}
-
 	// Clear error file on success
 	os.Remove(*errorFile)
 }
