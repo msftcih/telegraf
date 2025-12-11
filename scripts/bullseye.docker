@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.24-bullseye AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye AS builder
 
 WORKDIR /go/src/github.com/influxdata/telegraf
 
@@ -9,7 +9,7 @@ RUN go build cmd/oauth/get_classic_token_username_password.go
 RUN go build cmd/oauth/get_token_username_password.go
 RUN go build cmd/oauth/get_token_basic_auth_username_password.go
 RUN go build cmd/oauth/get_oauth2_token_password_credentials.go
-
+    
 FROM mcr.microsoft.com/mirror/docker/library/buildpack-deps:bullseye
 # Update libsystemd0,libpam0 and libc-bin (ldd) to latest, remove libsvn packages
 RUN apt-get update \
