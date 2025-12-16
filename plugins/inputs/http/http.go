@@ -176,11 +176,6 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
 
-	subscriptionKey := os.Getenv("subscriptionkey")
-	if len(subscriptionKey) > 0 {
-		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
-	}
-
 	for k, v := range h.Headers {
 		secret, err := v.Get()
 		if err != nil {
