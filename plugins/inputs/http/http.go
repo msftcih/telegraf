@@ -42,6 +42,8 @@ type HTTP struct {
 	TokenFile               string        `toml:"token_file"`
 	TokenHeaderName         string        `toml:"token_header_name"`
 
+
+
 	Headers            map[string]*config.Secret `toml:"headers"`
 	SuccessStatusCodes []int                     `toml:"success_status_codes"`
 	Log                telegraf.Logger           `toml:"-"`
@@ -159,6 +161,7 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 			return err
 		}
 
+
 		bearer := "Bearer " + strings.Trim(string(token), "\n")
 		if h.RemoveBearerTokenPrefix {
 			bearer = strings.Trim(string(token), "\n")
@@ -175,6 +178,7 @@ func (h *HTTP) gatherURL(acc telegraf.Accumulator, url string) error {
 	if len(subscriptionKey) > 0 {
 		request.Header.Add("Ocp-Apim-Subscription-Key", subscriptionKey)
 	}
+
 
 	for k, v := range h.Headers {
 		secret, err := v.Get()
