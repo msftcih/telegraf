@@ -13,10 +13,9 @@ This plugin gathers metrics about [Network Time Protocol][ntp] queries.
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -28,10 +27,6 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   ## Servers to query with ntpq.
   ## If no server is given, the local machine is queried.
   # servers = []
-
-  ## If false, set the -n ntpq flag. Can reduce metric gather time.
-  ## DEPRECATED since 1.24.0: add '-n' to 'options' instead to skip DNS lookup
-  # dns_lookup = true
 
   ## Options to pass to the ntpq command.
   # options = "-p"

@@ -1,3 +1,4 @@
+
 package main
 //script to issue oauth2 token requests from telegraf
 //Usage: get_oauth2_token_password_credentials.go -u <oauth_url> -i <oauth_issue_type-new/refresh> -o <access_token_file> -r <refresh_token_file> -ca <ca_cert_file> -cert <client_cert_file> -key <client_key_file> -data <json_data> -token-key <token_key_name> -refresh-token-key <refresh_token_key_name>

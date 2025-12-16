@@ -1,17 +1,25 @@
 # x509 Certificate Input Plugin
 
-This plugin provides information about X509 certificate accessible via local
-file, tcp, udp, https or smtp protocol.
+This plugin provides information about [X.509][x509] certificates accessible
+e.g. via local file, tcp, udp, https or smtp protocols and the Windows
+Certificate Store.
 
-When using a UDP address as a certificate source, the server must support
-[DTLS](https://en.wikipedia.org/wiki/Datagram_Transport_Layer_Security).
+> [!NOTE]
+> When using a UDP address as a certificate source, the server must support
+> [DTLS][dtls].
+
+⭐ Telegraf v1.8.0
+🏷️ network
+💻 all
+
+[x509]: https://en.wikipedia.org/wiki/X.509
+[dtls]: https://en.wikipedia.org/wiki/Datagram_Transport_Layer_Security
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -27,7 +35,8 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
             "/etc/ssl/certs/ssl-cert-snakeoil.pem",
             "/etc/mycerts/*.mydomain.org.pem", "file:///path/to/*.pem",
             "jks:///etc/mycerts/keystore.jks",
-            "pkcs12:///etc/mycerts/keystore.p12"]
+            "pkcs12:///etc/mycerts/keystore.p12",
+            "wincertstore://machine:ROOT", "wincertstore://user:CA"]
 
   ## Timeout for SSL connection
   # timeout = "5s"
@@ -57,6 +66,25 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   # use_proxy = true
   # proxy_url = "http://localhost:8888"
 ```
+
+### Windows Certificate Store
+
+When accessing certificates on the local Windows Certificate Store you have to
+select the certificate folder by using a URI or the form
+
+```text
+wincertstore://[location]:<folder>
+```
+
+With the `location` being either the local `machine` (default) or local `user`
+store. The `folder` has to be the non-translated, English folder name as can be
+found under the registry keys
+`HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\SystemCertificates` for the
+`machine` location or `HKEY_CURRENT_USER\SOFTWARE\Microsoft\SystemCertificates`
+for the `user` location. See the [Windows documentation][wincert_docs] for
+details.
+
+[wincert_docs]: https://learn.microsoft.com/en-us/windows/win32/seccrypto/system-store-locations
 
 ## Metrics
 

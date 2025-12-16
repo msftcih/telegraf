@@ -13,8 +13,8 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/config"
-	"github.com/influxdata/telegraf/internal/snmp"
 	"github.com/influxdata/telegraf/metric"
+	"github.com/influxdata/telegraf/plugins/common/snmp"
 	"github.com/influxdata/telegraf/testutil"
 )
 
@@ -1305,6 +1305,13 @@ func TestOidLookupFail(t *testing.T) {
 
 	// Verify plugin output
 	require.Empty(t, acc.GetTelegrafMetrics())
+
+	// Wait for the logging message to appear and check if it is the one we
+	// expect.
+	require.Eventually(t, func() bool {
+		return len(logger.Errors()) > 0
+	}, 3*time.Second, 100*time.Millisecond)
+
 	var found bool
 	for _, msg := range logger.Errors() {
 		if found = strings.Contains(msg, "unexpected oid"); found {

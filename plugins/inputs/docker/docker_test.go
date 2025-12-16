@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/influxdata/telegraf"
+	"github.com/influxdata/telegraf/config"
 	"github.com/influxdata/telegraf/internal/choice"
 	"github.com/influxdata/telegraf/testutil"
 )
@@ -50,15 +51,15 @@ func (c *mockClient) ContainerInspect(context.Context, string) (container.Inspec
 	return c.ContainerInspectF()
 }
 
-func (c *mockClient) ServiceList(context.Context, types.ServiceListOptions) ([]swarm.Service, error) {
+func (c *mockClient) ServiceList(context.Context, swarm.ServiceListOptions) ([]swarm.Service, error) {
 	return c.ServiceListF()
 }
 
-func (c *mockClient) TaskList(context.Context, types.TaskListOptions) ([]swarm.Task, error) {
+func (c *mockClient) TaskList(context.Context, swarm.TaskListOptions) ([]swarm.Task, error) {
 	return c.TaskListF()
 }
 
-func (c *mockClient) NodeList(context.Context, types.NodeListOptions) ([]swarm.Node, error) {
+func (c *mockClient) NodeList(context.Context, swarm.NodeListOptions) ([]swarm.Node, error) {
 	return c.NodeListF()
 }
 
@@ -456,6 +457,8 @@ func TestDocker_WindowsMemoryContainerStats(t *testing.T) {
 			}, nil
 		},
 	}
+	require.NoError(t, d.Init())
+	require.NoError(t, d.Start(&acc))
 	err := d.Gather(&acc)
 	require.NoError(t, err)
 }
@@ -566,10 +569,11 @@ func TestContainerLabels(t *testing.T) {
 				newClient:    newClientFunc,
 				LabelInclude: tt.include,
 				LabelExclude: tt.exclude,
-				Total:        true,
 				TotalInclude: []string{"cpu"},
 			}
 
+			require.NoError(t, d.Init())
+			require.NoError(t, d.Start(&acc))
 			err := d.Gather(&acc)
 			require.NoError(t, err)
 
@@ -683,6 +687,8 @@ func TestContainerNames(t *testing.T) {
 				ContainerExclude: tt.exclude,
 			}
 
+			require.NoError(t, d.Init())
+			require.NoError(t, d.Start(&acc))
 			err := d.Gather(&acc)
 			require.NoError(t, err)
 
@@ -900,6 +906,8 @@ func TestContainerStatus(t *testing.T) {
 				now = time.Now
 			}()
 
+			require.NoError(t, d.Init())
+			require.NoError(t, d.Start(&acc))
 			err := d.Gather(&acc)
 			require.NoError(t, err)
 
@@ -919,10 +927,11 @@ func TestDockerGatherInfo(t *testing.T) {
 		TagEnvironment: []string{"ENVVAR1", "ENVVAR2", "ENVVAR3", "ENVVAR5",
 			"ENVVAR6", "ENVVAR7", "ENVVAR8", "ENVVAR9"},
 		PerDeviceInclude: []string{"cpu", "network", "blkio"},
-		Total:            true,
-		TotalInclude:     []string{""},
+		TotalInclude:     []string{"cpu", "blkio", "network"},
 	}
 
+	require.NoError(t, d.Init())
+	require.NoError(t, d.Start(&acc))
 	err := acc.GatherError(d.Gather)
 	require.NoError(t, err)
 
@@ -1071,6 +1080,8 @@ func TestDockerGatherSwarmInfo(t *testing.T) {
 		newClient: func(string, *tls.Config) (dockerClient, error) { return &baseClient, nil },
 	}
 
+	require.NoError(t, d.Init())
+	require.NoError(t, d.Start(&acc))
 	err := acc.GatherError(d.Gather)
 	require.NoError(t, err)
 
@@ -1207,6 +1218,8 @@ func TestContainerStateFilter(t *testing.T) {
 				ContainerStateExclude: tt.exclude,
 			}
 
+			require.NoError(t, d.Init())
+			require.NoError(t, d.Start(&acc))
 			err := d.Gather(&acc)
 			require.NoError(t, err)
 		})
@@ -1267,6 +1280,8 @@ func TestContainerName(t *testing.T) {
 				newClient: tt.clientFunc,
 			}
 			var acc testutil.Accumulator
+			require.NoError(t, d.Init())
+			require.NoError(t, d.Start(&acc))
 			err := d.Gather(&acc)
 			require.NoError(t, err)
 
@@ -1461,9 +1476,7 @@ func Test_parseContainerStatsPerDeviceAndTotal(t *testing.T) {
 
 func TestDocker_Init(t *testing.T) {
 	type fields struct {
-		PerDevice        bool
 		PerDeviceInclude []string
-		Total            bool
 		TotalInclude     []string
 	}
 	tests := []struct {
@@ -1476,9 +1489,7 @@ func TestDocker_Init(t *testing.T) {
 		{
 			name: "Unsupported perdevice_include setting",
 			fields: fields{
-				PerDevice:        false,
 				PerDeviceInclude: []string{"nonExistentClass"},
-				Total:            false,
 				TotalInclude:     []string{"cpu"},
 			},
 			wantErr: true,
@@ -1486,43 +1497,26 @@ func TestDocker_Init(t *testing.T) {
 		{
 			name: "Unsupported total_include setting",
 			fields: fields{
-				PerDevice:        false,
 				PerDeviceInclude: []string{"cpu"},
-				Total:            false,
 				TotalInclude:     []string{"nonExistentClass"},
 			},
 			wantErr: true,
 		},
 		{
-			name: "PerDevice true adds network and blkio",
+			name: "Valid perdevice_include and total_include",
 			fields: fields{
-				PerDevice:        true,
-				PerDeviceInclude: []string{"cpu"},
-				Total:            true,
-				TotalInclude:     []string{"cpu"},
+				PerDeviceInclude: []string{"cpu", "network"},
+				TotalInclude:     []string{"cpu", "blkio"},
 			},
-			wantPerDeviceInclude: []string{"cpu", "network", "blkio"},
-			wantTotalInclude:     []string{"cpu"},
-		},
-		{
-			name: "Total false removes network and blkio",
-			fields: fields{
-				PerDevice:        false,
-				PerDeviceInclude: []string{"cpu"},
-				Total:            false,
-				TotalInclude:     []string{"cpu", "network", "blkio"},
-			},
-			wantPerDeviceInclude: []string{"cpu"},
-			wantTotalInclude:     []string{"cpu"},
+			wantPerDeviceInclude: []string{"cpu", "network"},
+			wantTotalInclude:     []string{"cpu", "blkio"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d := &Docker{
 				Log:              testutil.Logger{},
-				PerDevice:        tt.fields.PerDevice,
 				PerDeviceInclude: tt.fields.PerDeviceInclude,
-				Total:            tt.fields.Total,
 				TotalInclude:     tt.fields.TotalInclude,
 			}
 			err := d.Init()
@@ -1549,6 +1543,9 @@ func TestDockerGatherDiskUsage(t *testing.T) {
 		Log:       testutil.Logger{},
 		newClient: func(string, *tls.Config) (dockerClient, error) { return &baseClient, nil },
 	}
+
+	require.NoError(t, d.Init())
+	require.NoError(t, d.Start(&acc))
 
 	require.NoError(t, acc.GatherError(d.Gather))
 
@@ -1618,4 +1615,162 @@ func TestDockerGatherDiskUsage(t *testing.T) {
 			"server_version": "17.09.0-ce",
 		},
 	)
+}
+
+func TestPodmanDetection(t *testing.T) {
+	tests := []struct {
+		name          string
+		serverVersion string
+		engineName    string
+		endpoint      string
+		initBinary    string
+		expectPodman  bool
+	}{
+		{
+			name:          "Docker engine",
+			serverVersion: "28.3.2",
+			engineName:    "docker-desktop",
+			endpoint:      "unix:///var/run/docker.sock",
+			initBinary:    "docker-init",
+			expectPodman:  false,
+		},
+		{
+			name:          "Real Podman with version number",
+			serverVersion: "5.6.1",
+			engineName:    "localhost.localdomain",
+			endpoint:      "unix:///run/podman/podman.sock",
+			initBinary:    "crun",
+			expectPodman:  true,
+		},
+		{
+			name:          "Podman with version string containing podman",
+			serverVersion: "4.9.4-podman",
+			engineName:    "localhost",
+			endpoint:      "unix:///run/podman/podman.sock",
+			expectPodman:  true,
+		},
+		{
+			name:          "Podman with podman in name",
+			serverVersion: "4.9.4",
+			engineName:    "podman-machine",
+			endpoint:      "unix:///var/run/docker.sock",
+			expectPodman:  true,
+		},
+		{
+			name:          "Podman detected by endpoint",
+			serverVersion: "5.2.0",
+			engineName:    "localhost",
+			endpoint:      "unix:///run/podman/podman.sock",
+			expectPodman:  true,
+		},
+		{
+			name:          "Podman with crun runtime",
+			serverVersion: "5.0.1",
+			engineName:    "myhost.local",
+			endpoint:      "unix:///var/run/container.sock",
+			initBinary:    "crun",
+			expectPodman:  true,
+		},
+		{
+			name:          "Docker with crun (should not detect as Podman)",
+			serverVersion: "20.10.7",
+			engineName:    "docker-host",
+			endpoint:      "unix:///var/run/docker.sock",
+			initBinary:    "crun",
+			expectPodman:  false,
+		},
+		{
+			name:          "Edge case - simple version with generic name",
+			serverVersion: "4.8.2",
+			engineName:    "host",
+			endpoint:      "unix:///var/run/container.sock",
+			expectPodman:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var acc testutil.Accumulator
+			d := Docker{
+				Endpoint: tt.endpoint,
+				newClient: func(string, *tls.Config) (dockerClient, error) {
+					return &mockClient{
+						InfoF: func() (system.Info, error) {
+							return system.Info{
+								Name:          tt.engineName,
+								ServerVersion: tt.serverVersion,
+								InitBinary:    tt.initBinary,
+							}, nil
+						},
+						ContainerListF: func(container.ListOptions) ([]container.Summary, error) {
+							return nil, nil
+						},
+						ServiceListF: func() ([]swarm.Service, error) {
+							return nil, nil
+						},
+						ClientVersionF: func() string {
+							return "1.24.0"
+						},
+						CloseF: func() error {
+							return nil
+						},
+					}, nil
+				},
+				Log: testutil.Logger{},
+			}
+
+			require.NoError(t, d.Init())
+			require.NoError(t, d.Start(&acc))
+			require.Equal(t, tt.expectPodman, d.isPodman, "Podman detection mismatch")
+		})
+	}
+}
+
+func TestPodmanStatsCache(t *testing.T) {
+	// Create a mock Docker plugin configured as Podman
+	d := &Docker{
+		isPodman:       true,
+		PodmanCacheTTL: config.Duration(60 * time.Second),
+		Log:            testutil.Logger{},
+		statsCache:     make(map[string]*cachedContainerStats),
+	}
+
+	// Create test stats
+	testID := "test-container-123"
+	stats1 := &container.StatsResponse{
+		CPUStats: container.CPUStats{
+			CPUUsage: container.CPUUsage{
+				TotalUsage: 1000,
+			},
+			SystemUsage: 2000,
+		},
+	}
+
+	stats2 := &container.StatsResponse{
+		CPUStats: container.CPUStats{
+			CPUUsage: container.CPUUsage{
+				TotalUsage: 2000,
+			},
+			SystemUsage: 4000,
+		},
+		PreCPUStats: container.CPUStats{}, // Will be filled by fixPodmanCPUStats
+	}
+
+	// First call should cache the stats
+	d.fixPodmanCPUStats(testID, stats1)
+	require.Contains(t, d.statsCache, testID)
+	require.Equal(t, stats1, d.statsCache[testID].stats)
+
+	// Second call should use cached stats as PreCPUStats
+	d.fixPodmanCPUStats(testID, stats2)
+	require.Equal(t, stats1.CPUStats, stats2.PreCPUStats)
+
+	// Test cache cleanup
+	d.statsCache["old-container"] = &cachedContainerStats{
+		stats:     stats1,
+		timestamp: time.Now().Add(-3 * time.Hour),
+	}
+	d.cleanupStaleCache()
+	require.NotContains(t, d.statsCache, "old-container")
+	require.Contains(t, d.statsCache, testID)
 }

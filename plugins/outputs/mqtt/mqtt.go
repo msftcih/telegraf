@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -32,9 +33,7 @@ type message struct {
 }
 
 type MQTT struct {
-	TopicPrefix     string          `toml:"topic_prefix" deprecated:"1.25.0;1.35.0;use 'topic' instead"`
 	Topic           string          `toml:"topic"`
-	BatchMessage    bool            `toml:"batch" deprecated:"1.25.2;1.35.0;use 'layout = \"batch\"' instead"`
 	Layout          string          `toml:"layout"`
 	HomieDeviceName string          `toml:"homie_device_name"`
 	HomieNodeID     string          `toml:"homie_node_id"`
@@ -43,7 +42,7 @@ type MQTT struct {
 
 	client     mqtt.Client
 	serializer telegraf.Serializer
-	generator  *TopicNameGenerator
+	template   *template.Template
 
 	homieDeviceNameGenerator *template.Template
 	homieNodeIDGenerator     *template.Template
@@ -68,20 +67,24 @@ func (m *MQTT) Init() error {
 		return fmt.Errorf("qos value must be 0, 1, or 2: %d", m.QoS)
 	}
 
-	var err error
-	m.generator, err = NewTopicNameGenerator(m.TopicPrefix, m.Topic)
+	// Prepare the topic
+	topic := hostnameRe.ReplaceAllString(m.Topic, `$1.Tag "host"$2`)
+	topic = pluginNameRe.ReplaceAllString(topic, `$1.Name$2`)
+
+	tmpl, err := template.New("topic_name").Funcs(sprig.TxtFuncMap()).Parse(topic)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating topic template failed: %w", err)
 	}
+	for _, p := range strings.Split(topic, "/") {
+		if strings.ContainsAny(p, "#+") {
+			return fmt.Errorf("found forbidden character %s in the topic name %s", p, topic)
+		}
+	}
+	m.template = tmpl
 
 	switch m.Layout {
 	case "":
-		// For backward compatibility
-		if m.BatchMessage {
-			m.Layout = "batch"
-		} else {
-			m.Layout = "non-batch"
-		}
+		m.Layout = "non-batch"
 	case "non-batch", "batch", "field":
 	case "homie-v4":
 		if m.HomieDeviceName == "" {
@@ -106,6 +109,8 @@ func (m *MQTT) Init() error {
 	default:
 		return fmt.Errorf("invalid layout %q", m.Layout)
 	}
+
+	m.MqttConfig.ClientTrace = m.MqttConfig.ClientTrace || m.Log.Level().Includes(telegraf.Trace)
 
 	return nil
 }
@@ -297,6 +302,30 @@ func (m *MQTT) collectHomieV4(metrics []telegraf.Metric) []message {
 	}
 
 	return collection
+}
+
+func (m *MQTT) generateTopic(metric telegraf.Metric) (string, error) {
+	var b strings.Builder
+	err := m.template.Execute(&b, metric)
+	if err != nil {
+		return "", err
+	}
+	var ts []string
+	for _, p := range strings.Split(b.String(), "/") {
+		if p != "" {
+			ts = append(ts, p)
+		}
+	}
+	topic := strings.Join(ts, "/")
+
+	// This is to keep backward compatibility with previous behaviour where the plugin name was always present
+	if topic == "" {
+		return metric.Name(), nil
+	}
+	if strings.HasPrefix(b.String(), "/") {
+		topic = "/" + topic
+	}
+	return topic, nil
 }
 
 func init() {
