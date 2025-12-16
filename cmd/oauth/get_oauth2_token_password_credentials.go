@@ -74,72 +74,78 @@ func main() {
 
 	flag.Parse()
 
+	// Helper function to write errors to both log and file
+	writeError := func(errMsg string) {
+		log.Println(errMsg)
+		if ef, err := os.Create(*errorFile); err == nil {
+			ef.WriteString(errMsg + "\n")
+			ef.Close()
+		}
+	}
+
 	if *oauth_url == "" {
+		writeError("OAuth URL is required")
 		log.Fatal("OAuth URL is required")
 	}
 
-	if len(client_id) == 0 {
-		log.Printf("invalid client_id with length , %d\n", len(client_id))
-		return
-	}
+	var payload *strings.Reader
 
-	if len(client_secret) == 0 {
-		log.Println("invalid client_secret")
-		return
-	}
-
-	if len(username) == 0 {
-		log.Printf("invalid username, %d\n", len(username))
-		return
-	}
-
-	if len(password) == 0 {
-		log.Println("invalid password")
-		return
-	}
-
-	req_body := url.Values{}
-	req_body.Set("username", username)
-	req_body.Set("password", password)
-	// Add refresh token header if oauth_issue_type is refresh
-	if *oauth_issue_type == "refresh" {
-		refreshToken, err := ioutil.ReadFile(*refresh_token_file)
-		oauth_grant_type = "refresh_token"
-		if err != nil {
-			log.Fatal(err)
+	// If custom JSON data is provided, use it as the request body
+	if *jsonData != "" {
+		payload = strings.NewReader(*jsonData)
+	} else {
+		// Default form-encoded body
+		req_body := url.Values{}
+		req_body.Set("username", username)
+		req_body.Set("password", password)
+		// Add refresh token header if oauth_issue_type is refresh
+		if *oauth_issue_type == "refresh" {
+			refreshToken, err := ioutil.ReadFile(*refresh_token_file)
+			oauth_grant_type = "refresh_token"
+			if err != nil {
+				log.Fatal(err)
+			}
+			req_body.Set("refresh_token", string(refreshToken))
 		}
-		req_body.Set("refresh_token", string(refreshToken))
-	}
-	req_body.Set("grant_type", oauth_grant_type)
-	// Add refresh token header if oauth_issue_type is refresh
-	if oauth_issue_type == "refresh" {
-		refreshToken, err := ioutil.ReadFile(refresh_token_file)
-		if err != nil {
-			log.Fatal(err)
-		}
-		req_body.Set("refresh_token", string(refreshToken))
+		req_body.Set("grant_type", oauth_grant_type)
+		payload = strings.NewReader(req_body.Encode())
 	}
 
-	var payload = strings.NewReader(req_body.Encode())
+	// Configure TLS client
+	tlsConfig := &tls.Config{}
 
-	client := &http.Client{}
+	// Load CA cert if provided
 	if *caCertFile != "" {
-		// Load CA cert
 		caCert, err := ioutil.ReadFile(*caCertFile)
 		if err != nil {
-			log.Fatalf("Error reading CA cert file: %v", err)
+			errMsg := fmt.Sprintf("Error reading CA cert file: %v", err)
+			writeError(errMsg)
+			log.Fatalf(errMsg)
 		}
-
-		// Create a CA certificate pool and add the CA certificate to it
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+		tlsConfig.RootCAs = caCertPool
+	}
 
-		// Create a TLS configuration with the CA certificate pool
-		tlsConfig := &tls.Config{
-			RootCAs: caCertPool,
+	// Load client cert and key for mTLS if provided
+	if *clientCertFile != "" && *clientKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(*clientCertFile, *clientKeyFile)
+		if err != nil {
+			errMsg := fmt.Sprintf("Error loading client cert/key: %v", err)
+			writeError(errMsg)
+			log.Fatalf(errMsg)
 		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+		log.Println("mTLS enabled with client certificate")
+	} else if *clientCertFile != "" || *clientKeyFile != "" {
+		errMsg := "Both -cert and -key must be provided for mTLS"
+		writeError(errMsg)
+		log.Fatal(errMsg)
+	}
 
-		// Create an HTTP client with the TLS configuration
+	// Create HTTP client with TLS configuration if any TLS settings were configured
+	client := &http.Client{}
+	if *caCertFile != "" || (*clientCertFile != "" && *clientKeyFile != "") {
 		client = &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: tlsConfig,
@@ -155,14 +161,22 @@ func main() {
 		return
 	}
 
-	auth := base64.StdEncoding.EncodeToString([]byte(client_id + ":" + client_secret))
-	req.Header.Set("Authorization", "Basic "+auth)
-	req.Header.Add("Content-Type", oauth_content_type)
+	// Only add Basic Auth if client_id and client_secret are provided
+	if len(client_id) > 0 && len(client_secret) > 0 {
+		auth := base64.StdEncoding.EncodeToString([]byte(client_id + ":" + client_secret))
+		req.Header.Set("Authorization", "Basic "+auth)
+	}
+
+	// Set Content-Type if provided
+	if len(oauth_content_type) > 0 {
+		req.Header.Add("Content-Type", oauth_content_type)
+	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
-		fmt.Println(err)
+		errMsg := fmt.Sprintf("Error executing HTTP request: %v", err)
+		writeError(errMsg)
+		log.Fatal(errMsg)
 		return
 	}
 
@@ -170,8 +184,9 @@ func main() {
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Fatal(err)
-		fmt.Println(err)
+		errMsg := fmt.Sprintf("Error reading response body: %v", err)
+		writeError(errMsg)
+		log.Fatal(errMsg)
 		return
 	}
 
@@ -220,13 +235,20 @@ func main() {
 	defer f.Close()
 	f.WriteString(accessToken)
 
-	// Write refresh token to file if it exists in response
-	if authToken.RefreshToken != "" {
-		rf, err := os.Create(*refresh_token_file)
-		if err != nil {
-			log.Fatal(err)
+	// Write refresh token to file if it exists in response (supports nested keys)
+	if refreshTokenValue, ok := getNestedValue(responseData, *refreshTokenKey); ok {
+		if refreshTokenStr, ok := refreshTokenValue.(string); ok && refreshTokenStr != "" {
+			rf, err := os.Create(*refresh_token_file)
+			if err != nil {
+				errMsg := fmt.Sprintf("Error creating refresh token file: %v", err)
+				writeError(errMsg)
+				log.Fatal(errMsg)
+			}
+			defer rf.Close()
+			rf.WriteString(refreshTokenStr)
 		}
-		defer rf.Close()
-		rf.WriteString(authToken.RefreshToken)
 	}
+
+	// Clear error file on success
+	os.Remove(*errorFile)
 }
