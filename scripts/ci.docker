@@ -1,5 +1,4 @@
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.24.3-bullseye
-
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.5-bullseye
 
 RUN chmod -R 755 "$GOPATH"
 

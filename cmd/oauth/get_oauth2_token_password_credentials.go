@@ -1,4 +1,5 @@
 package main
+
 //script to issue oauth2 token requests from telegraf
 //Usage: get_oauth2_token_password_credentials.go -u <oauth_url> -i <oauth_issue_type-new/refresh> -o <access_token_file> -r <refresh_token_file> -ca <ca_cert_file> -cert <client_cert_file> -key <client_key_file> -data <json_data> -token-key <token_key_name> -refresh-token-key <refresh_token_key_name>
 //refresh_token_file is optional and only required for refresh token requests
@@ -10,32 +11,32 @@ package main
 //Environment variables (client_id, client_secret, username, password, oauth_grant_type, oauth_content_type) are all optional
 import (
 	"crypto/tls"
-    "crypto/x509"
-    "encoding/json"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
-	"encoding/base64"
 	"os"
 	"strings"
 )
 
 type AuthToken struct {
-	AccessToken 	string `json:"access_token"`
-	RefreshToken 	string `json:"refresh_token"`
-	Scope       	string `json:"scope"`
-	ExpiresIn   	int32  `json:"expires_in"`
-	TokenType   	string `json:"token_type"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	ExpiresIn    int32  `json:"expires_in"`
+	TokenType    string `json:"token_type"`
 }
 
 // getNestedValue extracts a value from nested JSON using dot notation (e.g., "data.token")
 func getNestedValue(data map[string]interface{}, path string) (interface{}, bool) {
 	keys := strings.Split(path, ".")
 	var current interface{} = data
-	
+
 	for _, key := range keys {
 		if m, ok := current.(map[string]interface{}); ok {
 			if val, exists := m[key]; exists {
@@ -47,7 +48,7 @@ func getNestedValue(data map[string]interface{}, path string) (interface{}, bool
 			return nil, false
 		}
 	}
-	
+
 	return current, true
 }
 
@@ -72,7 +73,7 @@ func main() {
 	errorFile := flag.String("error-file", "/tmp/telegraf/token_generation_error", "Error log file")
 
 	flag.Parse()
-	
+
 	// Helper function to write errors to both log and file
 	writeError := func(errMsg string) {
 		log.Println(errMsg)
@@ -81,14 +82,14 @@ func main() {
 			ef.Close()
 		}
 	}
-	
+
 	if *oauth_url == "" {
 		writeError("OAuth URL is required")
-        log.Fatal("OAuth URL is required")
-    }
+		log.Fatal("OAuth URL is required")
+	}
 
 	var payload *strings.Reader
-	
+
 	// If custom JSON data is provided, use it as the request body
 	if *jsonData != "" {
 		payload = strings.NewReader(*jsonData)
@@ -109,10 +110,10 @@ func main() {
 		req_body.Set("grant_type", oauth_grant_type)
 		payload = strings.NewReader(req_body.Encode())
 	}
-	
+
 	// Configure TLS client
 	tlsConfig := &tls.Config{}
-	
+
 	// Load CA cert if provided
 	if *caCertFile != "" {
 		caCert, err := ioutil.ReadFile(*caCertFile)
@@ -125,7 +126,7 @@ func main() {
 		caCertPool.AppendCertsFromPEM(caCert)
 		tlsConfig.RootCAs = caCertPool
 	}
-	
+
 	// Load client cert and key for mTLS if provided
 	if *clientCertFile != "" && *clientKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(*clientCertFile, *clientKeyFile)
@@ -141,7 +142,7 @@ func main() {
 		writeError(errMsg)
 		log.Fatal(errMsg)
 	}
-	
+
 	// Create HTTP client with TLS configuration if any TLS settings were configured
 	client := &http.Client{}
 	if *caCertFile != "" || (*clientCertFile != "" && *clientKeyFile != "") {
@@ -159,18 +160,18 @@ func main() {
 		log.Fatal(errMsg)
 		return
 	}
-	
+
 	// Only add Basic Auth if client_id and client_secret are provided
 	if len(client_id) > 0 && len(client_secret) > 0 {
 		auth := base64.StdEncoding.EncodeToString([]byte(client_id + ":" + client_secret))
-		req.Header.Set("Authorization", "Basic " + auth)
+		req.Header.Set("Authorization", "Basic "+auth)
 	}
-	
+
 	// Set Content-Type if provided
 	if len(oauth_content_type) > 0 {
 		req.Header.Add("Content-Type", oauth_content_type)
 	}
-    
+
 	res, err := client.Do(req)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error executing HTTP request: %v", err)
@@ -178,7 +179,7 @@ func main() {
 		log.Fatal(errMsg)
 		return
 	}
-	
+
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
@@ -247,7 +248,7 @@ func main() {
 			rf.WriteString(refreshTokenStr)
 		}
 	}
-	
+
 	// Clear error file on success
 	os.Remove(*errorFile)
 }

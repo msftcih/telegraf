@@ -21,7 +21,7 @@ The plugin supports authenticating via [username/password][userpass], a
 ## Service Input <!-- @/docs/includes/service_input.md -->
 
 This plugin is a service input. Normal plugins gather metrics determined by the
-interval setting. Service plugins start a service to listens and waits for
+interval setting. Service plugins start a service to listen and wait for
 metrics or events to occur. Service plugins have two key differences from
 normal plugins:
 
@@ -31,10 +31,9 @@ normal plugins:
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -59,6 +58,11 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   ## message. You need to configure the nats-server.
   ## https://docs.nats.io/nats-concepts/jetstream.
   jetstream_subjects = ["js_telegraf"]
+
+  ## explicitly specify the jetstream stream name
+  ## useful for sourced streams where there is no subject defined and
+  ## thus jetstream_subjects won't work
+  jetstream_stream = ""
 
   ## name a queue group
   queue_group = "telegraf_consumers"
