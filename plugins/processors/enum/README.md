@@ -1,20 +1,19 @@
 # Enum Processor Plugin
 
-The Enum Processor allows the configuration of value mappings for metric tags or
-fields.  The main use-case for this is to rewrite status codes such as _red_,
-_amber_ and _green_ by numeric values such as 0, 1, 2. The plugin supports
-string, int, float64 and bool types for the field values. Multiple tags or
-fields can be configured with separate value mappings for each. Default mapping
-values can be configured to be used for all values, which are not contained in
-the value_mappings. The processor supports explicit configuration of a
-destination tag or field. By default the source tag or field is overwritten.
+This plugin allows the mapping of field or tag values according to the
+configured enumeration. The main use-case is to rewrite numerical values into
+human-readable values or vice versa. Default mappings can be configured to be
+used for all remaining values.
+
+⭐ Telegraf v1.8.0
+🏷️ transformation
+💻 all
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 

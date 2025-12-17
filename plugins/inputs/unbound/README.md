@@ -1,14 +1,18 @@
 # Unbound Input Plugin
 
-This plugin gathers stats from [Unbound](https://www.unbound.net/) -
-a validating, recursive, and caching DNS resolver.
+This plugin gathers stats from an [Unbound][unbound] DNS resolver.
+
+⭐ Telegraf v1.5.0
+🏷️ server, network
+💻 all
+
+[unbound]: https://www.unbound.net
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -51,7 +55,7 @@ require additional permissions to execute successfully.  Depending on the
 user/group permissions of the telegraf user executing this plugin, you may need
 to alter the group membership, set facls, or use sudo.
 
-**Group membership (Recommended)**:
+#### Group membership (recommended)
 
 ```bash
 $ groups telegraf
@@ -63,7 +67,8 @@ $ groups telegraf
 telegraf : telegraf unbound
 ```
 
-**Sudo privileges**:
+#### Sudo privileges
+
 If you use this method, you will need the following in your telegraf config:
 
 ```toml

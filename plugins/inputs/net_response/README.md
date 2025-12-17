@@ -9,10 +9,9 @@ response time and optionally verifies text in the response.
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -56,7 +55,8 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
     - result
   - fields:
     - response_time (float, seconds)
-    - result_code (int, success = 0, timeout = 1, connection_failed = 2, read_failed = 3, string_mismatch = 4)
+    - result_code (int) success = 0, timeout = 1, connection_failed = 2,
+                        read_failed = 3, string_mismatch = 4
     - result_type (string) **DEPRECATED in 1.7; use result tag**
     - string_found (boolean) **DEPRECATED in 1.4; use result tag**
 

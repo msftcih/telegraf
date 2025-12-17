@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/config"
-	"github.com/influxdata/telegraf/internal/choice"
 	"github.com/influxdata/telegraf/metric"
 	"github.com/influxdata/telegraf/plugins/common/opcua"
 )
@@ -51,17 +51,18 @@ type MonitoringParameters struct {
 type NodeSettings struct {
 	FieldName        string               `toml:"name"`
 	Namespace        string               `toml:"namespace"`
+	NamespaceURI     string               `toml:"namespace_uri"`
 	IdentifierType   string               `toml:"identifier_type"`
 	Identifier       string               `toml:"identifier"`
-	DataType         string               `toml:"data_type" deprecated:"1.17.0;1.35.0;option is ignored"`
-	Description      string               `toml:"description" deprecated:"1.17.0;1.35.0;option is ignored"`
-	TagsSlice        [][]string           `toml:"tags" deprecated:"1.25.0;1.35.0;use 'default_tags' instead"`
 	DefaultTags      map[string]string    `toml:"default_tags"`
 	MonitoringParams MonitoringParameters `toml:"monitoring_params"`
 }
 
 // NodeID returns the OPC UA node id
 func (tag *NodeSettings) NodeID() string {
+	if tag.NamespaceURI != "" {
+		return "nsu=" + tag.NamespaceURI + ";" + tag.IdentifierType + "=" + tag.Identifier
+	}
 	return "ns=" + tag.Namespace + ";" + tag.IdentifierType + "=" + tag.Identifier
 }
 
@@ -69,20 +70,24 @@ func (tag *NodeSettings) NodeID() string {
 type NodeGroupSettings struct {
 	MetricName       string            `toml:"name"`            // Overrides plugin's setting
 	Namespace        string            `toml:"namespace"`       // Can be overridden by node setting
+	NamespaceURI     string            `toml:"namespace_uri"`   // Can be overridden by node setting
 	IdentifierType   string            `toml:"identifier_type"` // Can be overridden by node setting
 	Nodes            []NodeSettings    `toml:"nodes"`
-	TagsSlice        [][]string        `toml:"tags" deprecated:"1.26.0;1.35.0;use default_tags"`
 	DefaultTags      map[string]string `toml:"default_tags"`
 	SamplingInterval config.Duration   `toml:"sampling_interval"` // Can be overridden by monitoring parameters
 }
 
 type EventNodeSettings struct {
 	Namespace      string `toml:"namespace"`
+	NamespaceURI   string `toml:"namespace_uri"`
 	IdentifierType string `toml:"identifier_type"`
 	Identifier     string `toml:"identifier"`
 }
 
 func (e *EventNodeSettings) NodeID() string {
+	if e.NamespaceURI != "" {
+		return "nsu=" + e.NamespaceURI + ";" + e.IdentifierType + "=" + e.Identifier
+	}
 	return "ns=" + e.Namespace + ";" + e.IdentifierType + "=" + e.Identifier
 }
 
@@ -91,6 +96,7 @@ type EventGroupSettings struct {
 	QueueSize        uint32              `toml:"queue_size"`
 	EventTypeNode    EventNodeSettings   `toml:"event_type_node"`
 	Namespace        string              `toml:"namespace"`
+	NamespaceURI     string              `toml:"namespace_uri"`
 	IdentifierType   string              `toml:"identifier_type"`
 	NodeIDSettings   []EventNodeSettings `toml:"node_ids"`
 	SourceNames      []string            `toml:"source_names"`
@@ -102,6 +108,9 @@ func (e *EventGroupSettings) UpdateNodeIDSettings() {
 		n := &e.NodeIDSettings[i]
 		if n.Namespace == "" {
 			n.Namespace = e.Namespace
+		}
+		if n.NamespaceURI == "" {
+			n.NamespaceURI = e.NamespaceURI
 		}
 		if n.IdentifierType == "" {
 			n.IdentifierType = e.IdentifierType
@@ -142,11 +151,23 @@ func (e EventNodeSettings) validateEventNodeSettings() error {
 	}
 	if e.Identifier == "" {
 		return errors.New("identifier must be set")
-	} else if e.IdentifierType == "" {
-		return errors.New("identifier_type must be set")
-	} else if e.Namespace == "" {
-		return errors.New("namespace must be set")
 	}
+	if e.IdentifierType == "" {
+		return errors.New("identifier_type must be set")
+	}
+
+	// Validate namespace configuration
+	hasNamespace := len(e.Namespace) > 0
+	hasNamespaceURI := len(e.NamespaceURI) > 0
+
+	if hasNamespace && hasNamespaceURI {
+		return errors.New("cannot specify both 'namespace' and 'namespace_uri', use only one")
+	}
+
+	if !hasNamespace && !hasNamespaceURI {
+		return errors.New("must specify either 'namespace' or 'namespace_uri'")
+	}
+
 	return nil
 }
 
@@ -174,9 +195,11 @@ func (o *InputClientConfig) Validate() error {
 		return errors.New("metric name is empty")
 	}
 
-	err := choice.Check(string(o.Timestamp), []string{"", "gather", "server", "source"})
-	if err != nil {
-		return err
+	switch string(o.Timestamp) {
+	case "", "gather", "server", "source":
+		// Valid timestamp source
+	default:
+		return fmt.Errorf("unknown timestamp source %q, expected one of: [\"\", \"gather\", \"server\", \"source\"]", o.Timestamp)
 	}
 
 	if o.TimestampFormat == "" {
@@ -243,25 +266,8 @@ type NodeMetricMapping struct {
 // NewNodeMetricMapping builds a new NodeMetricMapping from the given argument
 func NewNodeMetricMapping(metricName string, node NodeSettings, groupTags map[string]string) (*NodeMetricMapping, error) {
 	mergedTags := make(map[string]string)
-	for n, t := range groupTags {
-		mergedTags[n] = t
-	}
-
-	nodeTags := make(map[string]string)
-	if len(node.DefaultTags) > 0 {
-		nodeTags = node.DefaultTags
-	} else if len(node.TagsSlice) > 0 {
-		// fixme: once the TagsSlice has been removed (after deprecation), remove this if else logic
-		var err error
-		nodeTags, err = tagsSliceToMap(node.TagsSlice)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	for n, t := range nodeTags {
-		mergedTags[n] = t
-	}
+	maps.Copy(mergedTags, groupTags)
+	maps.Copy(mergedTags, node.DefaultTags)
 
 	return &NodeMetricMapping{
 		Tag:        node,
@@ -348,39 +354,34 @@ func newMP(n *NodeMetricMapping) metricParts {
 	return x
 }
 
-// fixme: once the TagsSlice has been removed (after deprecation), remove this
-// tagsSliceToMap takes an array of pairs of strings and creates a map from it
-func tagsSliceToMap(tags [][]string) (map[string]string, error) {
-	m := make(map[string]string)
-	for i, tag := range tags {
-		if len(tag) != 2 {
-			return nil, fmt.Errorf("tag %d needs 2 values, has %d: %v", i+1, len(tag), tag)
-		}
-		if tag[0] == "" {
-			return nil, fmt.Errorf("tag %d has empty name", i+1)
-		}
-		if tag[1] == "" {
-			return nil, fmt.Errorf("tag %d has empty value", i+1)
-		}
-		if _, ok := m[tag[0]]; ok {
-			return nil, fmt.Errorf("tag %d has duplicate key: %v", i+1, tag[0])
-		}
-		m[tag[0]] = tag[1]
-	}
-	return m, nil
-}
-
 func validateNodeToAdd(existing map[metricParts]struct{}, nmm *NodeMetricMapping) error {
 	if nmm.Tag.FieldName == "" {
 		return fmt.Errorf("empty name in %q", nmm.Tag.FieldName)
 	}
 
-	if len(nmm.Tag.Namespace) == 0 {
-		return errors.New("empty node namespace not allowed")
+	// Validate namespace configuration
+	hasNamespace := len(nmm.Tag.Namespace) > 0
+	hasNamespaceURI := len(nmm.Tag.NamespaceURI) > 0
+
+	if hasNamespace && hasNamespaceURI {
+		return fmt.Errorf("node %q: cannot specify both 'namespace' and 'namespace_uri', use only one", nmm.Tag.FieldName)
+	}
+
+	if !hasNamespace && !hasNamespaceURI {
+		return fmt.Errorf("node %q: must specify either 'namespace' or 'namespace_uri'", nmm.Tag.FieldName)
 	}
 
 	if len(nmm.Tag.Identifier) == 0 {
 		return errors.New("empty node identifier not allowed")
+	}
+
+	for k, v := range nmm.MetricTags {
+		if k == "" {
+			return fmt.Errorf("empty tag name in tags for %q", nmm.Tag.FieldName)
+		}
+		if v == "" {
+			return fmt.Errorf("empty tag value for tag %q in %q", k, nmm.Tag.FieldName)
+		}
 	}
 
 	mp := newMP(nmm)
@@ -424,25 +425,12 @@ func (o *OpcUAInputClient) InitNodeMetricMapping() error {
 			group.MetricName = o.Config.MetricName
 		}
 
-		if len(group.DefaultTags) > 0 && len(group.TagsSlice) > 0 {
-			o.Log.Warn("Tags found in both `tags` and `default_tags`, only using tags defined in `default_tags`")
-		}
-
-		groupTags := make(map[string]string)
-		if len(group.DefaultTags) > 0 {
-			groupTags = group.DefaultTags
-		} else if len(group.TagsSlice) > 0 {
-			// fixme: once the TagsSlice has been removed (after deprecation), remove this if else logic
-			var err error
-			groupTags, err = tagsSliceToMap(group.TagsSlice)
-			if err != nil {
-				return err
-			}
-		}
-
 		for _, node := range group.Nodes {
 			if node.Namespace == "" {
 				node.Namespace = group.Namespace
+			}
+			if node.NamespaceURI == "" {
+				node.NamespaceURI = group.NamespaceURI
 			}
 			if node.IdentifierType == "" {
 				node.IdentifierType = group.IdentifierType
@@ -451,7 +439,7 @@ func (o *OpcUAInputClient) InitNodeMetricMapping() error {
 				node.MonitoringParams.SamplingInterval = group.SamplingInterval
 			}
 
-			nmm, err := NewNodeMetricMapping(group.MetricName, node, groupTags)
+			nmm, err := NewNodeMetricMapping(group.MetricName, node, group.DefaultTags)
 			if err != nil {
 				return err
 			}
@@ -468,29 +456,91 @@ func (o *OpcUAInputClient) InitNodeMetricMapping() error {
 
 func (o *OpcUAInputClient) InitNodeIDs() error {
 	o.NodeIDs = make([]*ua.NodeID, 0, len(o.NodeMetricMapping))
+	namespaceArray := o.NamespaceArray()
+
 	for _, node := range o.NodeMetricMapping {
-		nid, err := ua.ParseNodeID(node.Tag.NodeID())
-		if err != nil {
-			return err
+		nodeIDStr := node.Tag.NodeID()
+
+		// Check if this uses namespace URI (nsu=) format
+		if strings.HasPrefix(nodeIDStr, "nsu=") {
+			// Namespace URI format requires namespace array
+			if len(namespaceArray) == 0 {
+				return fmt.Errorf("node ID %q uses namespace URI (nsu=) but namespace array is not available - connection to server may be required", nodeIDStr)
+			}
+			// Use ParseExpandedNodeID for namespace URI support
+			expandedNodeID, err := ua.ParseExpandedNodeID(nodeIDStr, namespaceArray)
+			if err != nil {
+				return fmt.Errorf("failed to parse node ID %q: %w", nodeIDStr, err)
+			}
+			o.NodeIDs = append(o.NodeIDs, expandedNodeID.NodeID)
+		} else {
+			// Use ParseNodeID for namespace index (ns=) format
+			nid, err := ua.ParseNodeID(nodeIDStr)
+			if err != nil {
+				return fmt.Errorf("failed to parse node ID %q: %w", nodeIDStr, err)
+			}
+			o.NodeIDs = append(o.NodeIDs, nid)
 		}
-		o.NodeIDs = append(o.NodeIDs, nid)
 	}
 
 	return nil
 }
 
 func (o *OpcUAInputClient) InitEventNodeIDs() error {
-	for _, eventSetting := range o.EventGroups {
-		eid, err := ua.ParseNodeID(eventSetting.EventTypeNode.NodeID())
-		if err != nil {
-			return err
-		}
-		for _, node := range eventSetting.NodeIDSettings {
-			nid, err := ua.ParseNodeID(node.NodeID())
+	namespaceArray := o.NamespaceArray()
 
-			if err != nil {
-				return err
+	for _, eventSetting := range o.EventGroups {
+		eventTypeNodeIDStr := eventSetting.EventTypeNode.NodeID()
+		var eid *ua.NodeID
+
+		// Parse event type node ID
+		if strings.HasPrefix(eventTypeNodeIDStr, "nsu=") {
+			if len(namespaceArray) == 0 {
+				return fmt.Errorf(
+					"event type node ID %q uses namespace URI (nsu=) but namespace array is not available - "+
+						"connection to server may be required",
+					eventTypeNodeIDStr,
+				)
 			}
+			expandedNodeID, err := ua.ParseExpandedNodeID(eventTypeNodeIDStr, namespaceArray)
+			if err != nil {
+				return fmt.Errorf("failed to parse event type node ID %q: %w", eventTypeNodeIDStr, err)
+			}
+			eid = expandedNodeID.NodeID
+		} else {
+			parsedID, err := ua.ParseNodeID(eventTypeNodeIDStr)
+			if err != nil {
+				return fmt.Errorf("failed to parse event type node ID %q: %w", eventTypeNodeIDStr, err)
+			}
+			eid = parsedID
+		}
+
+		for _, node := range eventSetting.NodeIDSettings {
+			nodeIDStr := node.NodeID()
+			var nid *ua.NodeID
+
+			// Parse node ID
+			if strings.HasPrefix(nodeIDStr, "nsu=") {
+				if len(namespaceArray) == 0 {
+					return fmt.Errorf(
+						"event node ID %q uses namespace URI (nsu=) but namespace array is not available - "+
+							"connection to server may be required",
+						nodeIDStr,
+					)
+				}
+				expandedNodeID, err := ua.ParseExpandedNodeID(nodeIDStr, namespaceArray)
+				if err != nil {
+					return fmt.Errorf("failed to parse node ID %q: %w", nodeIDStr, err)
+				}
+				nid = expandedNodeID.NodeID
+			} else {
+				parsedID, err := ua.ParseNodeID(nodeIDStr)
+				if err != nil {
+					return fmt.Errorf("failed to parse node ID %q: %w", nodeIDStr, err)
+				}
+				nid = parsedID
+			}
+
 			nmm := EventNodeMetricMapping{
 				NodeID:           nid,
 				SamplingInterval: &eventSetting.SamplingInterval,
@@ -592,8 +642,11 @@ func (o *OpcUAInputClient) MetricForNode(nodeIdx int) telegraf.Metric {
 	}
 
 	fields["Quality"] = strings.TrimSpace(o.LastReceivedData[nodeIdx].Quality.Error())
-	if choice.Contains("DataType", o.Config.OptionalFields) {
-		fields["DataType"] = strings.Replace(o.LastReceivedData[nodeIdx].DataType.String(), "TypeID", "", 1)
+	for _, field := range o.Config.OptionalFields {
+		if field == "DataType" {
+			fields["DataType"] = strings.Replace(o.LastReceivedData[nodeIdx].DataType.String(), "TypeID", "", 1)
+			break
+		}
 	}
 	if !o.StatusCodeOK(o.LastReceivedData[nodeIdx].Quality) {
 		mp := newMP(nmm)
@@ -661,7 +714,7 @@ func (o *OpcUAInputClient) MetricForEvent(nodeIdx int, event *ua.EventFieldList)
 	return metric.New("opcua_event", tags, fields, t)
 }
 
-// Creation of event filter for event streaming
+// CreateEventFilter creates a new event filter for event streaming
 func (node *EventNodeMetricMapping) CreateEventFilter() (*ua.ExtensionObject, error) {
 	selects, err := node.createSelectClauses()
 	if err != nil {

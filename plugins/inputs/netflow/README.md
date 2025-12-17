@@ -22,7 +22,7 @@ Definitions for IPFIX are according to [IANA assignment document][IPFIX doc].
 ## Service Input <!-- @/docs/includes/service_input.md -->
 
 This plugin is a service input. Normal plugins gather metrics determined by the
-interval setting. Service plugins start a service to listens and waits for
+interval setting. Service plugins start a service to listen and wait for
 metrics or events to occur. Service plugins have two key differences from
 normal plugins:
 
@@ -32,10 +32,9 @@ normal plugins:
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -96,11 +95,18 @@ with the corresponding name and data-type.
 
 Currently the following `data-type`s are supported:
 
-- `uint`   unsigned integer with 8, 16, 32 or 64 bit
-- `hex`    hex-encoding of the raw byte sequence with `0x` prefix
-- `string` string interpretation of the raw byte sequence
-- `ip`     IPv4 or IPv6 address
-- `proto`  mapping of layer-4 protocol numbers to names
+- `bool`    TruthValue according to [RFC5101][RFC5101]
+- `int`     signed integer with 8, 16, 32 or 64 bit
+- `uint`    unsigned integer with 8, 16, 32 or 64 bit
+- `float32` double-precision floating-point number (32 bit)
+- `float64` double-precision floating-point number (64 bit)
+- `hex`     hex-encoding of the raw byte sequence with `0x` prefix
+- `string`  string interpretation of the raw byte sequence
+- `mac`     MAC address
+- `ip`      IPv4 or IPv6 address
+- `proto`   mapping of layer-4 protocol numbers to names
+
+[RFC5101]: https://www.rfc-editor.org/rfc/rfc5101#section-6.1.5
 
 ## Troubleshooting
 

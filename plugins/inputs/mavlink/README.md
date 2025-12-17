@@ -8,7 +8,11 @@ Currently the ArduPilot-specific Mavlink dialect is used, check the
 messages available.
 
 > [!WARNING]
-> This plugin potentially generates a large amount of data. If your output plugin cannot handle the rate of messages, use [Metric filters][metric_filters] to limit the metrics written to outputs, and/or the `filters` configuration parameter to limit which Mavlink messages this plugin parses.
+> This plugin potentially generates a large amount of data. If your output
+> plugin cannot handle the rate of messages, use
+> [Metric filters][metric_filters] to limit the metrics written to outputs,
+> and/or the `filters` configuration parameter to limit which Mavlink messages
+> this plugin parses.
 
 ⭐ Telegraf v1.35.0
 🏷️ iot
@@ -22,10 +26,9 @@ messages available.
 
 ## Global configuration options <!-- @/docs/includes/plugin_config.md -->
 
-In addition to the plugin-specific configuration settings, plugins support
-additional global and plugin configuration settings. These settings are used to
-modify metrics, tags, and field or create aliases and configure ordering, etc.
-See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
+Plugins support additional global and plugin configuration settings for tasks
+such as modifying metrics, tags, and fields, creating aliases, and configuring
+plugin ordering. See [CONFIGURATION.md][CONFIGURATION.md] for more details.
 
 [CONFIGURATION.md]: ../../../docs/CONFIGURATION.md#plugins
 
@@ -52,15 +55,15 @@ See the [CONFIGURATION.md][CONFIGURATION.md] for more details.
   ## prefix removed, eg: "global_position_int", "attitude"
   # filter = []
 
-  ## Mavlink system ID for Telegraf. Only used if the mavlink plugin is sending 
+  ## Mavlink system ID for Telegraf. Only used if the mavlink plugin is sending
   ## messages, eg. when `stream_request_frequency` is 0 (see below.)
   # system_id = 254
 
   ## Determines whether the plugin sends requests to subscribe to data.
   ## In mavlink, stream rates must be configured before data is received.
   ## This config item sets the rate in Hz, with 0 disabling the request.
-  ## 
-  ## This frequency should be set to 0 if your software already controls the 
+  ##
+  ## This frequency should be set to 0 if your software already controls the
   ## rates using REQUEST_DATA_STREAM or MAV_CMD_SET_MESSAGE_INTERVAL
   ## (See https://mavlink.io/en/mavgen_python/howto_requestmessages.html)
   # stream_request_frequency = 4
